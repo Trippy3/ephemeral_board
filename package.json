@@ -1,0 +1,31 @@
+{
+  "name": "sticky-board",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"tsx watch server.ts\" \"esbuild public/app.ts --bundle --outfile=public/app.js --watch --sourcemap\"",
+    "build": "esbuild public/app.ts --bundle --outfile=public/app.js --minify",
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "nanoid": "^5.0.9",
+    "socket.io": "^4.8.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.24.0",
+    "socket.io-client": "^4.8.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "packageManager": "pnpm@10.12.1+sha512.f0dda8580f0ee9481c5c79a1d927b9164f2c478e90992ad268bbb2465a736984391d6333d2c327913578b2804af33474ca554ba29c04a8b13060a717675ae3ac"
+}

@@ -1,0 +1,342 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  background: #f0f0f0;
+  height: 100vh;
+  user-select: none;
+}
+
+/* Toolbar */
+#toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 10000;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+#toolbar-left, #toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#board-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #333;
+}
+
+#color-palette {
+  display: flex;
+  gap: 4px;
+}
+
+.color-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.color-btn:hover {
+  transform: scale(1.2);
+}
+
+.color-btn.active {
+  border-color: #333;
+}
+
+#export-btn, #zoom-in-btn, #zoom-out-btn, #zoom-reset-btn {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #555;
+  transition: background 0.15s;
+}
+
+#export-btn:hover, #zoom-in-btn:hover, #zoom-out-btn:hover, #zoom-reset-btn:hover {
+  background: #f5f5f5;
+}
+
+#users-list {
+  display: flex;
+  gap: 4px;
+}
+
+.user-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  position: relative;
+}
+
+/* Board */
+#board-container {
+  position: fixed;
+  top: 48px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  cursor: grab;
+  background:
+    radial-gradient(circle, #ddd 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+#board-container.grabbing {
+  cursor: grabbing;
+}
+
+#board {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+}
+
+/* Sticky Notes */
+.sticky-note {
+  position: absolute;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1);
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 0.15s;
+  touch-action: none;
+}
+
+.sticky-note:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.12);
+}
+
+.sticky-note.dragging {
+  cursor: grabbing;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  opacity: 0.9;
+}
+
+.sticky-note .note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: rgba(0,0,0,0.4);
+  cursor: grab;
+}
+
+.sticky-note .note-header .note-author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.sticky-note .note-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sticky-note:hover .note-actions {
+  opacity: 1;
+}
+
+.note-action-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(0,0,0,0.08);
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: rgba(0,0,0,0.5);
+  transition: background 0.1s;
+}
+
+.note-action-btn:hover {
+  background: rgba(0,0,0,0.15);
+}
+
+.sticky-note .note-text {
+  flex: 1;
+  padding: 4px 10px 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  outline: none;
+  overflow-y: auto;
+  word-break: break-word;
+  white-space: pre-wrap;
+  cursor: text;
+  color: rgba(0,0,0,0.8);
+}
+
+.sticky-note .note-text:empty::before {
+  content: "Type here...";
+  color: rgba(0,0,0,0.25);
+}
+
+/* Resize handle */
+.sticky-note .resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sticky-note:hover .resize-handle {
+  opacity: 0.3;
+}
+
+.sticky-note .resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(0,0,0,0.3);
+  border-bottom: 2px solid rgba(0,0,0,0.3);
+}
+
+/* Color picker popup */
+.color-picker-popup {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 9999;
+}
+
+.color-picker-popup .color-btn {
+  width: 20px;
+  height: 20px;
+}
+
+/* Cursors */
+.remote-cursor {
+  position: absolute;
+  pointer-events: none;
+  transition: left 0.1s linear, top 0.1s linear;
+  z-index: 9998;
+}
+
+.remote-cursor .cursor-pointer {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 10px solid currentColor;
+  transform: rotate(-30deg);
+}
+
+.remote-cursor .cursor-label {
+  margin-left: 10px;
+  margin-top: -2px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Name Dialog */
+#name-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+
+#name-dialog.hidden {
+  display: none;
+}
+
+#name-dialog-content {
+  background: #fff;
+  padding: 32px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  text-align: center;
+}
+
+#name-dialog-content h2 {
+  margin-bottom: 16px;
+  font-size: 18px;
+  color: #333;
+}
+
+#name-input {
+  padding: 10px 16px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  width: 240px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#name-input:focus {
+  border-color: #3b82f6;
+}
+
+#name-submit {
+  margin-left: 8px;
+  padding: 10px 24px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#name-submit:hover {
+  background: #2563eb;
+}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sticky Board</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="toolbar">
+    <div id="toolbar-left">
+      <span id="board-title">Sticky Board</span>
+      <div id="color-palette">
+        <button class="color-btn" data-color="#fef08a" style="background:#fef08a" title="Yellow"></button>
+        <button class="color-btn" data-color="#fca5a5" style="background:#fca5a5" title="Red"></button>
+        <button class="color-btn" data-color="#86efac" style="background:#86efac" title="Green"></button>
+        <button class="color-btn" data-color="#93c5fd" style="background:#93c5fd" title="Blue"></button>
+        <button class="color-btn" data-color="#c4b5fd" style="background:#c4b5fd" title="Purple"></button>
+        <button class="color-btn" data-color="#fdba74" style="background:#fdba74" title="Orange"></button>
+        <button class="color-btn" data-color="#f9a8d4" style="background:#f9a8d4" title="Pink"></button>
+      </div>
+    </div>
+    <div id="toolbar-right">
+      <div id="users-list"></div>
+      <button id="export-btn" title="Export as Markdown">Export MD</button>
+      <button id="zoom-in-btn" title="Zoom In">+</button>
+      <button id="zoom-out-btn" title="Zoom Out">-</button>
+      <button id="zoom-reset-btn" title="Reset Zoom">100%</button>
+    </div>
+  </div>
+  <div id="board-container">
+    <div id="board"></div>
+  </div>
+  <div id="name-dialog">
+    <div id="name-dialog-content">
+      <h2>Enter your name</h2>
+      <input type="text" id="name-input" placeholder="Your name" maxlength="20" autofocus>
+      <button id="name-submit">Join</button>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
