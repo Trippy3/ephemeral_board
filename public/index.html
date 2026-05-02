@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sticky Board</title>
+  <title>Ephemeral Board</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="toolbar">
     <div id="toolbar-left">
-      <span id="board-title">Sticky Board</span>
+      <span id="board-title">Ephemeral Board</span>
       <div id="color-palette">
         <button class="color-btn" data-color="#fef08a" style="background:#fef08a" title="Yellow"></button>
         <button class="color-btn" data-color="#fca5a5" style="background:#fca5a5" title="Red"></button>
@@ -18,18 +18,45 @@
         <button class="color-btn" data-color="#c4b5fd" style="background:#c4b5fd" title="Purple"></button>
         <button class="color-btn" data-color="#fdba74" style="background:#fdba74" title="Orange"></button>
         <button class="color-btn" data-color="#f9a8d4" style="background:#f9a8d4" title="Pink"></button>
+        <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="White"></button>
+        <button class="color-btn" data-color="#9ca3af" style="background:#9ca3af" title="Gray"></button>
+        <button class="color-btn" data-color="#1f2937" style="background:#1f2937" title="Black"></button>
       </div>
     </div>
     <div id="toolbar-right">
+      <button id="connect-mode-btn" title="Connect notes (C)" class="mode-btn">🔗</button>
+      <button id="frame-mode-btn" title="Draw a frame (F)" class="mode-btn">⬜</button>
       <div id="users-list"></div>
+      <button id="import-btn" title="Import Markdown">Import MD</button>
       <button id="export-btn" title="Export as Markdown">Export MD</button>
+      <input type="file" id="import-file" accept=".md,text/markdown,text/plain" hidden>
       <button id="zoom-in-btn" title="Zoom In">+</button>
       <button id="zoom-out-btn" title="Zoom Out">-</button>
       <button id="zoom-reset-btn" title="Reset Zoom">100%</button>
     </div>
   </div>
   <div id="board-container">
-    <div id="board"></div>
+    <div id="board">
+      <div id="frame-layer"></div>
+      <svg id="connector-layer" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <div id="import-confirm-dialog" class="hidden">
+      <div class="dialog-content">
+        <h2>ボードをインポート</h2>
+        <p id="import-summary"></p>
+        <p class="warning">⚠ 現在のボードは完全に置き換えられます (取り消し不可)。</p>
+        <div class="dialog-actions">
+          <button id="import-cancel">キャンセル</button>
+          <button id="import-confirm">置き換える</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div id="name-dialog">
     <div id="name-dialog-content">

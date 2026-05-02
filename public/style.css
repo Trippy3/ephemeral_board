@@ -168,6 +168,9 @@ body {
   gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 70%;
 }
 
 .sticky-note:hover .note-actions {
@@ -209,6 +212,39 @@ body {
 .sticky-note .note-text:empty::before {
   content: "Type here...";
   color: rgba(0,0,0,0.25);
+}
+
+/* Dark notes: invert text and chrome colors */
+.sticky-note.dark .note-header,
+.sticky-note.dark .note-author {
+  color: rgba(255,255,255,0.55);
+}
+
+.sticky-note.dark .note-text {
+  color: rgba(255,255,255,0.92);
+}
+
+.sticky-note.dark .note-text:empty::before {
+  color: rgba(255,255,255,0.35);
+}
+
+.sticky-note.dark .note-action-btn {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.7);
+}
+
+.sticky-note.dark .note-action-btn:hover {
+  background: rgba(255,255,255,0.22);
+}
+
+.sticky-note.dark .resize-handle::after {
+  border-right-color: rgba(255,255,255,0.5);
+  border-bottom-color: rgba(255,255,255,0.5);
+}
+
+/* White notes need a visible border */
+.sticky-note[data-color="#ffffff"] {
+  border: 1px solid #d1d5db;
 }
 
 /* Resize handle */
@@ -339,4 +375,212 @@ body {
 
 #name-submit:hover {
   background: #2563eb;
+}
+
+/* Mode buttons (connect / frame) */
+.mode-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mode-btn:hover {
+  background: #f5f5f5;
+}
+
+.mode-btn.active {
+  background: #3b82f6;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+/* Body cursor while in special modes */
+body.mode-connect #board-container,
+body.mode-frame #board-container {
+  cursor: crosshair;
+}
+
+/* SVG connector layer */
+#connector-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+#connector-layer .connector-line {
+  stroke-width: 2;
+  fill: none;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+#connector-layer .connector-line:hover {
+  stroke-width: 4;
+}
+
+/* Selected note outline (for connect-mode pick / multi-select) */
+.sticky-note.selected,
+.sticky-note.connect-source {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Frame layer */
+#frame-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.frame-element {
+  position: absolute;
+  border: 2px solid;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.02);
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.frame-element .frame-title {
+  position: absolute;
+  left: 6px;
+  top: -22px;
+  background: rgba(255,255,255,0.85);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #333;
+  cursor: text;
+  outline: none;
+  border: 1px solid transparent;
+  max-width: calc(100% - 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.frame-element .frame-title:focus {
+  border-color: #3b82f6;
+  background: #fff;
+}
+
+.frame-element .frame-actions {
+  position: absolute;
+  right: 4px;
+  top: -22px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.frame-element:hover .frame-actions {
+  opacity: 1;
+}
+
+.frame-element .frame-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.frame-element.dragging {
+  opacity: 0.85;
+}
+
+.frame-creating-rect {
+  position: absolute;
+  border: 2px dashed #3b82f6;
+  background: rgba(59,130,246,0.1);
+  pointer-events: none;
+  border-radius: 6px;
+}
+
+/* Selection rectangle (multi-select) */
+#selection-rect {
+  position: absolute;
+  border: 1.5px dashed #3b82f6;
+  background: rgba(59,130,246,0.08);
+  pointer-events: none;
+  z-index: 9997;
+}
+
+/* Import confirm dialog */
+#import-confirm-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+
+#import-confirm-dialog.hidden {
+  display: none;
+}
+
+#import-confirm-dialog .dialog-content {
+  background: #fff;
+  padding: 24px 28px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  max-width: 420px;
+}
+
+#import-confirm-dialog h2 {
+  margin-bottom: 12px;
+  font-size: 17px;
+  color: #333;
+}
+
+#import-confirm-dialog p {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #555;
+}
+
+#import-confirm-dialog .warning {
+  color: #b91c1c;
+}
+
+#import-confirm-dialog .dialog-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#import-confirm-dialog button {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#import-confirm-dialog #import-confirm {
+  background: #ef4444;
+  color: #fff;
+  border-color: #b91c1c;
+}
+
+#import-confirm-dialog #import-confirm:hover {
+  background: #dc2626;
 }

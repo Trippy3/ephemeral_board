@@ -15,8 +15,20 @@ import {
   resizeNote,
   assignUserColor,
   startCleanup,
+  createConnector,
+  deleteConnector,
+  createFrame,
+  updateFrame,
+  deleteFrame,
+  duplicateNote,
+  restoreNote,
+  replaceBoard,
 } from "./state.js";
 import { exportAsMarkdown } from "./export.js";
+import { parseMarkdownImport } from "./import.js";
+import { sanitizeNoteHtmlOnServer } from "./sanitize-server.js";
+import { FONT_SIZES, type TextAlign, type ConnectorStyle, type StickyNote, type Connector, type Frame } from "./shared.js";
+import { formatNote } from "./state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -28,6 +40,7 @@ const io = new Server(server, {
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/api/boards/:boardId/import", express.text({ type: ["text/*", "application/octet-stream"], limit: "1mb" }));
 
 // Markdown export
 app.get("/api/boards/:boardId/export.md", (req, res) => {
@@ -38,6 +51,37 @@ app.get("/api/boards/:boardId/export.md", (req, res) => {
     `attachment; filename="board-${req.params.boardId}.md"`
   );
   res.send(md);
+});
+
+// Markdown import (replace board)
+app.post("/api/boards/:boardId/import", (req, res) => {
+  const boardId = req.params.boardId;
+  const body = typeof req.body === "string" ? req.body : "";
+  if (!body) {
+    return res.status(400).json({ error: "Empty body" });
+  }
+  let parsed;
+  try {
+    parsed = parseMarkdownImport(body);
+  } catch (err) {
+    return res.status(400).json({ error: (err as Error).message });
+  }
+  replaceBoard(boardId, parsed);
+  const snapshot = getBoardSnapshot(boardId);
+  const users = boardUsers.get(boardId);
+  io.to(boardId).emit("board:sync", {
+    schemaVersion: snapshot.schemaVersion,
+    notes: snapshot.notes,
+    connectors: snapshot.connectors,
+    frames: snapshot.frames,
+    users: users ? Object.fromEntries(users) : {},
+  });
+  res.json({
+    success: true,
+    notes: parsed.notes.length,
+    connectors: parsed.connectors.length,
+    frames: parsed.frames.length,
+  });
 });
 
 // Track connected users per board
@@ -62,8 +106,12 @@ io.on("connection", (socket) => {
     boardUsers.get(currentBoard)!.set(socket.id, { name: userName, color: userColor });
 
     // Send full state
+    const snapshot = getBoardSnapshot(currentBoard);
     socket.emit("board:sync", {
-      notes: getBoardSnapshot(currentBoard),
+      schemaVersion: snapshot.schemaVersion,
+      notes: snapshot.notes,
+      connectors: snapshot.connectors,
+      frames: snapshot.frames,
       users: Object.fromEntries(boardUsers.get(currentBoard)!),
     });
 
@@ -91,16 +139,45 @@ io.on("connection", (socket) => {
 
   socket.on("note:edit", (data: { id: string; text: string }) => {
     if (!currentBoard) return;
-    const note = editNote(currentBoard, data.id, data.text);
+    const safeText = sanitizeNoteHtmlOnServer(data.text);
+    const note = editNote(currentBoard, data.id, safeText);
     if (note) {
-      socket.to(currentBoard).emit("note:edited", { id: data.id, text: data.text });
+      socket.to(currentBoard).emit("note:edited", { id: data.id, text: safeText });
+    }
+  });
+
+  socket.on("note:format", (data: { id: string; fontSize?: number; align?: TextAlign }) => {
+    if (!currentBoard) return;
+    const allowedSize =
+      data.fontSize !== undefined && (FONT_SIZES as readonly number[]).includes(data.fontSize)
+        ? data.fontSize
+        : undefined;
+    const allowedAlign =
+      data.align === "left" || data.align === "center" || data.align === "right"
+        ? data.align
+        : undefined;
+    if (allowedSize === undefined && allowedAlign === undefined) return;
+    const note = formatNote(currentBoard, data.id, {
+      fontSize: allowedSize,
+      align: allowedAlign,
+    });
+    if (note) {
+      io.to(currentBoard).emit("note:formatted", {
+        id: data.id,
+        fontSize: allowedSize,
+        align: allowedAlign,
+      });
     }
   });
 
   socket.on("note:delete", (data: { id: string }) => {
     if (!currentBoard) return;
-    if (deleteNote(currentBoard, data.id)) {
-      io.to(currentBoard).emit("note:deleted", { id: data.id });
+    const result = deleteNote(currentBoard, data.id);
+    if (result.deleted) {
+      io.to(currentBoard).emit("note:deleted", {
+        id: data.id,
+        removedConnectorIds: result.removedConnectorIds,
+      });
     }
   });
 
@@ -132,6 +209,96 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("note:duplicate", (data: {
+    sourceId: string;
+    x: number;
+    y: number;
+  }) => {
+    if (!currentBoard) return;
+    const board = getOrCreateBoard(currentBoard);
+    const source = board.notes.get(data.sourceId);
+    if (!source) return;
+    const note = duplicateNote(
+      currentBoard,
+      {
+        text: source.text,
+        color: source.color,
+        width: source.width,
+        height: source.height,
+        fontSize: source.fontSize,
+        align: source.align,
+      },
+      { x: data.x, y: data.y, createdBy: userName }
+    );
+    io.to(currentBoard).emit("note:created", note);
+  });
+
+  socket.on("note:restore", (data: { note: StickyNote }) => {
+    if (!currentBoard) return;
+    const safeText = sanitizeNoteHtmlOnServer(data.note.text);
+    const restored = restoreNote(currentBoard, { ...data.note, text: safeText });
+    if (restored) {
+      io.to(currentBoard).emit("note:created", restored);
+    }
+  });
+
+  socket.on("connector:create", (data: {
+    fromNoteId: string;
+    toNoteId: string;
+    style: ConnectorStyle;
+    color: string;
+  }) => {
+    if (!currentBoard) return;
+    const connector = createConnector(currentBoard, data);
+    if (connector) {
+      io.to(currentBoard).emit("connector:created", connector);
+    }
+  });
+
+  socket.on("connector:delete", (data: { id: string }) => {
+    if (!currentBoard) return;
+    if (deleteConnector(currentBoard, data.id)) {
+      io.to(currentBoard).emit("connector:deleted", { id: data.id });
+    }
+  });
+
+  socket.on("frame:create", (data: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+    title: string;
+  }) => {
+    if (!currentBoard) return;
+    const frame = createFrame(currentBoard, data);
+    io.to(currentBoard).emit("frame:created", frame);
+  });
+
+  socket.on("frame:update", (data: {
+    id: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    color?: string;
+    title?: string;
+  }) => {
+    if (!currentBoard) return;
+    const { id, ...changes } = data;
+    const frame = updateFrame(currentBoard, id, changes);
+    if (frame) {
+      socket.to(currentBoard).emit("frame:updated", frame);
+    }
+  });
+
+  socket.on("frame:delete", (data: { id: string }) => {
+    if (!currentBoard) return;
+    if (deleteFrame(currentBoard, data.id)) {
+      io.to(currentBoard).emit("frame:deleted", { id: data.id });
+    }
+  });
+
   socket.on("cursor:move", (data: { x: number; y: number }) => {
     if (!currentBoard) return;
     socket.to(currentBoard).emit("cursor:moved", {
@@ -158,5 +325,5 @@ io.on("connection", (socket) => {
 startCleanup();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Sticky Board running at http://localhost:${PORT}`);
+  console.log(`Ephemeral Board running at http://localhost:${PORT}`);
 });

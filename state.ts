@@ -1,11 +1,23 @@
 import { nanoid } from "nanoid";
-import { StickyNote } from "./shared.js";
+import {
+  StickyNote,
+  Connector,
+  Frame,
+  BoardSnapshot,
+  SCHEMA_VERSION,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_ALIGN,
+  TextAlign,
+  ConnectorStyle,
+} from "./shared.js";
 
-export type { StickyNote };
+export type { StickyNote, Connector, Frame };
 
 export interface BoardState {
   id: string;
   notes: Map<string, StickyNote>;
+  connectors: Map<string, Connector>;
+  frames: Map<string, Frame>;
   createdAt: number;
   lastActivityAt: number;
 }
@@ -33,17 +45,19 @@ const GUIDE_NOTES: { text: string; color: string }[] = [
   },
   {
     color: "#86efac",
-    text: "🎨 色と削除\n\nツールバーで色を選んでから作成\n🎨 ボタン → 色を変更\n✕ ボタン → 削除",
+    text: "🎨 色と書式\n\nツールバーで色を選んでから作成\n🎨 ボタン → 色を変更\nB / 整列 / サイズで書式変更",
   },
   {
     color: "#fef08a",
-    text: "🔍 ボード操作\n\nマウスホイール → ズーム\n空白をドラッグ → パン（スクロール）\nExport MD → Markdownで保存",
+    text: "🔍 ボード操作\n\nマウスホイール → ズーム\n空白をドラッグ → パン\n空白で矩形ドラッグ → 複数選択\nDelete → 削除 / Ctrl+Z → 取り消し",
   },
   {
     color: "#c4b5fd",
-    text: "👥 共同編集\n\n同じURLを共有するだけ！\n他のユーザーのカーソルが見えます\n\nこのガイド付箋は不要なら削除してOK",
+    text: "👥 共同編集 & MD\n\n同じURLを共有するだけ\nExport MD → 状態を保存\nImport MD → 状態を復元\n\nこのガイド付箋は不要なら削除してOK",
   },
 ];
+
+let maxZIndex = 0;
 
 export function getOrCreateBoard(boardId: string): BoardState {
   let board = boards.get(boardId);
@@ -52,6 +66,8 @@ export function getOrCreateBoard(boardId: string): BoardState {
     board = {
       id: boardId,
       notes: new Map(),
+      connectors: new Map(),
+      frames: new Map(),
       createdAt: now,
       lastActivityAt: now,
     };
@@ -70,6 +86,8 @@ export function getOrCreateBoard(boardId: string): BoardState {
         createdAt: now,
         updatedAt: now,
         zIndex: maxZIndex,
+        fontSize: DEFAULT_FONT_SIZE,
+        align: DEFAULT_ALIGN,
       };
       board.notes.set(note.id, note);
     }
@@ -78,13 +96,23 @@ export function getOrCreateBoard(boardId: string): BoardState {
   return board;
 }
 
-export function getBoardSnapshot(boardId: string): StickyNote[] {
+export function getBoardSnapshot(boardId: string): BoardSnapshot {
   const board = boards.get(boardId);
-  if (!board) return [];
-  return Array.from(board.notes.values());
+  if (!board) {
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      notes: [],
+      connectors: [],
+      frames: [],
+    };
+  }
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    notes: Array.from(board.notes.values()),
+    connectors: Array.from(board.connectors.values()),
+    frames: Array.from(board.frames.values()),
+  };
 }
-
-let maxZIndex = 0;
 
 export function createNote(
   boardId: string,
@@ -105,10 +133,54 @@ export function createNote(
     createdAt: now,
     updatedAt: now,
     zIndex: maxZIndex,
+    fontSize: DEFAULT_FONT_SIZE,
+    align: DEFAULT_ALIGN,
   };
   board.notes.set(note.id, note);
   board.lastActivityAt = now;
   return note;
+}
+
+export function duplicateNote(
+  boardId: string,
+  source: { text: string; color: string; width: number; height: number; fontSize: number; align: TextAlign },
+  data: { x: number; y: number; createdBy: string }
+): StickyNote {
+  const board = getOrCreateBoard(boardId);
+  const now = Date.now();
+  maxZIndex++;
+  const note: StickyNote = {
+    id: nanoid(10),
+    text: source.text,
+    x: data.x,
+    y: data.y,
+    width: source.width,
+    height: source.height,
+    color: source.color,
+    createdBy: data.createdBy,
+    createdAt: now,
+    updatedAt: now,
+    zIndex: maxZIndex,
+    fontSize: source.fontSize,
+    align: source.align,
+  };
+  board.notes.set(note.id, note);
+  board.lastActivityAt = now;
+  return note;
+}
+
+export function restoreNote(
+  boardId: string,
+  note: StickyNote
+): StickyNote | null {
+  const board = getOrCreateBoard(boardId);
+  if (board.notes.has(note.id)) return null;
+  const now = Date.now();
+  maxZIndex = Math.max(maxZIndex, note.zIndex) + 1;
+  const restored: StickyNote = { ...note, zIndex: maxZIndex, updatedAt: now };
+  board.notes.set(restored.id, restored);
+  board.lastActivityAt = now;
+  return restored;
 }
 
 export function moveNote(
@@ -145,12 +217,41 @@ export function editNote(
   return note;
 }
 
-export function deleteNote(boardId: string, noteId: string): boolean {
+export function formatNote(
+  boardId: string,
+  noteId: string,
+  data: { fontSize?: number; align?: TextAlign }
+): StickyNote | null {
   const board = boards.get(boardId);
-  if (!board) return false;
+  if (!board) return null;
+  const note = board.notes.get(noteId);
+  if (!note) return null;
+  const now = Date.now();
+  if (data.fontSize !== undefined) note.fontSize = data.fontSize;
+  if (data.align !== undefined) note.align = data.align;
+  note.updatedAt = now;
+  board.lastActivityAt = now;
+  return note;
+}
+
+export function deleteNote(boardId: string, noteId: string): {
+  deleted: boolean;
+  removedConnectorIds: string[];
+} {
+  const board = boards.get(boardId);
+  if (!board) return { deleted: false, removedConnectorIds: [] };
   const deleted = board.notes.delete(noteId);
-  if (deleted) board.lastActivityAt = Date.now();
-  return deleted;
+  const removedConnectorIds: string[] = [];
+  if (deleted) {
+    for (const [cid, c] of board.connectors) {
+      if (c.fromNoteId === noteId || c.toNoteId === noteId) {
+        board.connectors.delete(cid);
+        removedConnectorIds.push(cid);
+      }
+    }
+    board.lastActivityAt = Date.now();
+  }
+  return { deleted, removedConnectorIds };
 }
 
 export function changeNoteColor(
@@ -198,6 +299,115 @@ export function resizeNote(
   note.updatedAt = now;
   board.lastActivityAt = now;
   return note;
+}
+
+// --- Connector CRUD ---
+
+export function createConnector(
+  boardId: string,
+  data: { fromNoteId: string; toNoteId: string; style: ConnectorStyle; color: string }
+): Connector | null {
+  const board = getOrCreateBoard(boardId);
+  if (!board.notes.has(data.fromNoteId) || !board.notes.has(data.toNoteId)) {
+    return null;
+  }
+  if (data.fromNoteId === data.toNoteId) return null;
+  const now = Date.now();
+  const connector: Connector = {
+    id: nanoid(10),
+    fromNoteId: data.fromNoteId,
+    toNoteId: data.toNoteId,
+    style: data.style,
+    color: data.color,
+    createdAt: now,
+    updatedAt: now,
+  };
+  board.connectors.set(connector.id, connector);
+  board.lastActivityAt = now;
+  return connector;
+}
+
+export function deleteConnector(boardId: string, connectorId: string): boolean {
+  const board = boards.get(boardId);
+  if (!board) return false;
+  const deleted = board.connectors.delete(connectorId);
+  if (deleted) board.lastActivityAt = Date.now();
+  return deleted;
+}
+
+// --- Frame CRUD ---
+
+export function createFrame(
+  boardId: string,
+  data: { x: number; y: number; width: number; height: number; color: string; title: string }
+): Frame {
+  const board = getOrCreateBoard(boardId);
+  const now = Date.now();
+  const frame: Frame = {
+    id: nanoid(10),
+    x: data.x,
+    y: data.y,
+    width: data.width,
+    height: data.height,
+    color: data.color,
+    title: data.title,
+    createdAt: now,
+    updatedAt: now,
+  };
+  board.frames.set(frame.id, frame);
+  board.lastActivityAt = now;
+  return frame;
+}
+
+export function updateFrame(
+  boardId: string,
+  frameId: string,
+  data: Partial<Pick<Frame, "x" | "y" | "width" | "height" | "color" | "title">>
+): Frame | null {
+  const board = boards.get(boardId);
+  if (!board) return null;
+  const frame = board.frames.get(frameId);
+  if (!frame) return null;
+  const now = Date.now();
+  if (data.x !== undefined) frame.x = data.x;
+  if (data.y !== undefined) frame.y = data.y;
+  if (data.width !== undefined) frame.width = data.width;
+  if (data.height !== undefined) frame.height = data.height;
+  if (data.color !== undefined) frame.color = data.color;
+  if (data.title !== undefined) frame.title = data.title;
+  frame.updatedAt = now;
+  board.lastActivityAt = now;
+  return frame;
+}
+
+export function deleteFrame(boardId: string, frameId: string): boolean {
+  const board = boards.get(boardId);
+  if (!board) return false;
+  const deleted = board.frames.delete(frameId);
+  if (deleted) board.lastActivityAt = Date.now();
+  return deleted;
+}
+
+// --- Replace whole board (for MD import) ---
+
+export function replaceBoard(
+  boardId: string,
+  snapshot: { notes: StickyNote[]; connectors: Connector[]; frames: Frame[] }
+): BoardState {
+  const now = Date.now();
+  const board: BoardState = {
+    id: boardId,
+    notes: new Map(snapshot.notes.map((n) => [n.id, n])),
+    connectors: new Map(snapshot.connectors.map((c) => [c.id, c])),
+    frames: new Map(snapshot.frames.map((f) => [f.id, f])),
+    createdAt: now,
+    lastActivityAt: now,
+  };
+  for (const note of snapshot.notes) {
+    if (note.zIndex > maxZIndex) maxZIndex = note.zIndex;
+  }
+  boards.set(boardId, board);
+  return board;
 }
 
 export function startCleanup(): void {

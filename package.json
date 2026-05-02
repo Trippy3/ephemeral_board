@@ -1,5 +1,5 @@
 {
-  "name": "sticky-board",
+  "name": "ephemeral-board",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,12 @@
     "start": "tsx server.ts"
   },
   "dependencies": {
+    "dompurify": "^3.4.2",
     "express": "^4.21.0",
+    "js-yaml": "^4.1.1",
     "nanoid": "^5.0.9",
-    "socket.io": "^4.8.0"
+    "socket.io": "^4.8.0",
+    "zod": "^4.4.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -20,6 +23,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "concurrently": "^9.1.0",
     "esbuild": "^0.24.0",

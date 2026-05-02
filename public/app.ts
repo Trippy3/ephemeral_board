@@ -1,5 +1,15 @@
 import { io, Socket } from "socket.io-client";
-import { StickyNote, NOTE_COLORS } from "../shared.js";
+import {
+  StickyNote,
+  Connector,
+  Frame,
+  NOTE_COLORS,
+  FONT_SIZES,
+  TextAlign,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_ALIGN,
+} from "../shared.js";
+import { sanitizeNoteHtml } from "./sanitize.js";
 
 function throttle<T extends (...args: any[]) => void>(fn: T, ms: number): T {
   let last = 0;
@@ -20,7 +30,17 @@ let scale = 1;
 let panX = 0;
 let panY = 0;
 const notes = new Map<string, StickyNote>();
+const connectors = new Map<string, Connector>();
+const frames = new Map<string, Frame>();
 const cursors = new Map<string, HTMLElement>();
+const selectedNoteIds = new Set<string>();
+let connectMode = false;
+let frameMode = false;
+let connectSourceId: string | null = null;
+let clipboardNotes: StickyNote[] = [];
+type DeleteUndoEntry = { kind: "delete"; notes: StickyNote[] };
+const undoStack: DeleteUndoEntry[] = [];
+const UNDO_LIMIT = 20;
 
 // --- DOM refs ---
 const board = document.getElementById("board")!;
@@ -30,9 +50,19 @@ const nameInput = document.getElementById("name-input") as HTMLInputElement;
 const nameSubmit = document.getElementById("name-submit")!;
 const usersList = document.getElementById("users-list")!;
 const exportBtn = document.getElementById("export-btn")!;
+const importBtn = document.getElementById("import-btn")!;
+const importFileInput = document.getElementById("import-file") as HTMLInputElement;
+const importConfirmDialog = document.getElementById("import-confirm-dialog")!;
+const importSummaryEl = document.getElementById("import-summary")!;
+const importCancelBtn = document.getElementById("import-cancel")!;
+const importConfirmBtn = document.getElementById("import-confirm")!;
 const zoomInBtn = document.getElementById("zoom-in-btn")!;
 const zoomOutBtn = document.getElementById("zoom-out-btn")!;
 const zoomResetBtn = document.getElementById("zoom-reset-btn")!;
+const connectModeBtn = document.getElementById("connect-mode-btn")!;
+const frameModeBtn = document.getElementById("frame-mode-btn")!;
+const connectorLayer = document.getElementById("connector-layer") as unknown as SVGSVGElement;
+const frameLayer = document.getElementById("frame-layer")!;
 
 // --- Color palette ---
 document.querySelectorAll("#color-palette .color-btn").forEach((btn) => {
@@ -141,6 +171,54 @@ boardContainer.addEventListener("dblclick", (e) => {
 });
 
 // --- Render note ---
+function isDarkColor(hex: string): boolean {
+  const meta = NOTE_COLORS.find((c) => c.hex.toLowerCase() === hex.toLowerCase());
+  return meta?.dark === true;
+}
+
+function applyNoteFormat(textEl: HTMLElement, fontSize: number, align: TextAlign): void {
+  textEl.style.fontSize = `${fontSize}px`;
+  textEl.style.textAlign = align;
+}
+
+function flushNoteEdit(noteId: string, textEl: HTMLElement): void {
+  const noteData = notes.get(noteId);
+  if (!noteData) return;
+  const safe = sanitizeNoteHtml(textEl.innerHTML);
+  noteData.text = safe;
+  socket.emit("note:edit", { id: noteId, text: safe });
+}
+
+function setNoteAlign(noteId: string, noteEl: HTMLElement, align: TextAlign): void {
+  const noteData = notes.get(noteId);
+  if (!noteData) return;
+  noteData.align = align;
+  const textEl = noteEl.querySelector(".note-text") as HTMLElement | null;
+  if (textEl) textEl.style.textAlign = align;
+  socket.emit("note:format", { id: noteId, align });
+}
+
+function stepNoteFontSize(noteId: string, noteEl: HTMLElement, step: number): void {
+  const noteData = notes.get(noteId);
+  if (!noteData) return;
+  const current = noteData.fontSize ?? DEFAULT_FONT_SIZE;
+  const idx = FONT_SIZES.indexOf(current as typeof FONT_SIZES[number]);
+  const baseIdx = idx === -1 ? FONT_SIZES.indexOf(DEFAULT_FONT_SIZE) : idx;
+  const nextIdx = Math.min(FONT_SIZES.length - 1, Math.max(0, baseIdx + step));
+  const nextSize = FONT_SIZES[nextIdx];
+  if (nextSize === noteData.fontSize) return;
+  noteData.fontSize = nextSize;
+  const textEl = noteEl.querySelector(".note-text") as HTMLElement | null;
+  if (textEl) textEl.style.fontSize = `${nextSize}px`;
+  socket.emit("note:format", { id: noteId, fontSize: nextSize });
+}
+
+function applyColorToNoteEl(el: HTMLElement, color: string): void {
+  el.style.backgroundColor = color;
+  el.dataset.color = color;
+  el.classList.toggle("dark", isDarkColor(color));
+}
+
 function renderNote(note: StickyNote): HTMLElement {
   const el = document.createElement("div");
   el.className = "sticky-note";
@@ -149,7 +227,7 @@ function renderNote(note: StickyNote): HTMLElement {
   el.style.top = `${note.y}px`;
   el.style.width = `${note.width}px`;
   el.style.height = `${note.height}px`;
-  el.style.backgroundColor = note.color;
+  applyColorToNoteEl(el, note.color);
   el.style.zIndex = String(note.zIndex);
 
   // Header
@@ -163,6 +241,62 @@ function renderNote(note: StickyNote): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "note-actions";
 
+  const boldBtn = document.createElement("button");
+  boldBtn.className = "note-action-btn";
+  boldBtn.innerHTML = "<b>B</b>";
+  boldBtn.title = "Bold (Ctrl+B)";
+  boldBtn.addEventListener("pointerdown", (e) => e.preventDefault());
+  boldBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.execCommand("bold");
+    flushNoteEdit(note.id, text);
+  });
+
+  const alignLeftBtn = document.createElement("button");
+  alignLeftBtn.className = "note-action-btn";
+  alignLeftBtn.textContent = "⯇";
+  alignLeftBtn.title = "Align left";
+  alignLeftBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setNoteAlign(note.id, el, "left");
+  });
+
+  const alignCenterBtn = document.createElement("button");
+  alignCenterBtn.className = "note-action-btn";
+  alignCenterBtn.textContent = "≡";
+  alignCenterBtn.title = "Align center";
+  alignCenterBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setNoteAlign(note.id, el, "center");
+  });
+
+  const alignRightBtn = document.createElement("button");
+  alignRightBtn.className = "note-action-btn";
+  alignRightBtn.textContent = "⯈";
+  alignRightBtn.title = "Align right";
+  alignRightBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setNoteAlign(note.id, el, "right");
+  });
+
+  const sizeDownBtn = document.createElement("button");
+  sizeDownBtn.className = "note-action-btn";
+  sizeDownBtn.textContent = "A−";
+  sizeDownBtn.title = "Smaller text";
+  sizeDownBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    stepNoteFontSize(note.id, el, -1);
+  });
+
+  const sizeUpBtn = document.createElement("button");
+  sizeUpBtn.className = "note-action-btn";
+  sizeUpBtn.textContent = "A+";
+  sizeUpBtn.title = "Larger text";
+  sizeUpBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    stepNoteFontSize(note.id, el, 1);
+  });
+
   const colorBtn = document.createElement("button");
   colorBtn.className = "note-action-btn";
   colorBtn.textContent = "🎨";
@@ -175,31 +309,28 @@ function renderNote(note: StickyNote): HTMLElement {
   const deleteBtn = document.createElement("button");
   deleteBtn.className = "note-action-btn";
   deleteBtn.textContent = "✕";
-  deleteBtn.title = "Delete";
+  deleteBtn.title = "Delete (Ctrl+Z to undo)";
   deleteBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    const current = notes.get(note.id);
+    if (current) pushUndo({ kind: "delete", notes: [{ ...current }] });
     socket.emit("note:delete", { id: note.id });
   });
 
-  actions.append(colorBtn, deleteBtn);
+  actions.append(boldBtn, alignLeftBtn, alignCenterBtn, alignRightBtn, sizeDownBtn, sizeUpBtn, colorBtn, deleteBtn);
   header.append(author, actions);
 
-  // Text
+  // Text (HTML-formatted, sanitized)
   const text = document.createElement("div");
   text.className = "note-text";
   text.contentEditable = "true";
-  text.textContent = note.text;
+  text.innerHTML = sanitizeNoteHtml(note.text || "");
+  applyNoteFormat(text, note.fontSize ?? DEFAULT_FONT_SIZE, note.align ?? DEFAULT_ALIGN);
 
   let editTimeout: ReturnType<typeof setTimeout>;
   text.addEventListener("input", () => {
     clearTimeout(editTimeout);
-    editTimeout = setTimeout(() => {
-      const noteData = notes.get(note.id);
-      if (noteData) {
-        noteData.text = text.innerText || "";
-        socket.emit("note:edit", { id: note.id, text: noteData.text });
-      }
-    }, 300);
+    editTimeout = setTimeout(() => flushNoteEdit(note.id, text), 300);
   });
 
   text.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -218,17 +349,12 @@ function renderNote(note: StickyNote): HTMLElement {
   return el;
 }
 
-// --- Drag ---
+// --- Drag (with multi-select support) ---
 function setupDrag(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
   let dragging = false;
   let startX = 0;
   let startY = 0;
-  let origX = 0;
-  let origY = 0;
-
-  const throttledMoveEmit = throttle((x: number, y: number) => {
-    socket.emit("note:move", { id: noteId, x, y });
-  }, 30);
+  let groupOrigPositions: Map<string, { x: number; y: number }> = new Map();
 
   handle.addEventListener("pointerdown", (e) => {
     const target = e.target as HTMLElement;
@@ -239,14 +365,30 @@ function setupDrag(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
       target.contentEditable === "true"
     ) return;
 
+    // Connect mode: clicking picks source/target instead of dragging
+    if (connectMode) {
+      e.stopPropagation();
+      handleNoteClickForConnect(noteId, noteEl);
+      return;
+    }
+
     e.stopPropagation();
+
+    // Selection management on pointerdown
+    if (e.shiftKey) {
+      toggleNoteSelection(noteId);
+    } else if (!selectedNoteIds.has(noteId)) {
+      selectNote(noteId, false);
+    }
+
     dragging = true;
     startX = e.clientX;
     startY = e.clientY;
-    const note = notes.get(noteId);
-    if (note) {
-      origX = note.x;
-      origY = note.y;
+    groupOrigPositions = new Map();
+    const idsToMove = selectedNoteIds.has(noteId) ? Array.from(selectedNoteIds) : [noteId];
+    for (const id of idsToMove) {
+      const n = notes.get(id);
+      if (n) groupOrigPositions.set(id, { x: n.x, y: n.y });
     }
     noteEl.classList.add("dragging");
     handle.setPointerCapture(e.pointerId);
@@ -258,27 +400,29 @@ function setupDrag(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
     if (!dragging) return;
     const dx = (e.clientX - startX) / scale;
     const dy = (e.clientY - startY) / scale;
-    const newX = origX + dx;
-    const newY = origY + dy;
-    noteEl.style.left = `${newX}px`;
-    noteEl.style.top = `${newY}px`;
-    const note = notes.get(noteId);
-    if (note) {
-      note.x = newX;
-      note.y = newY;
+    for (const [id, orig] of groupOrigPositions) {
+      const nx = orig.x + dx;
+      const ny = orig.y + dy;
+      const n = notes.get(id);
+      if (n) { n.x = nx; n.y = ny; }
+      const targetEl = document.getElementById(`note-${id}`);
+      if (targetEl) {
+        targetEl.style.left = `${nx}px`;
+        targetEl.style.top = `${ny}px`;
+      }
+      refreshConnectorsForNote(id);
+      socket.emit("note:move", { id, x: nx, y: ny });
     }
-    throttledMoveEmit(newX, newY);
   });
 
   handle.addEventListener("pointerup", () => {
-    if (dragging) {
-      dragging = false;
-      noteEl.classList.remove("dragging");
-      // Send final position to ensure accuracy
-      const note = notes.get(noteId);
-      if (note) {
-        socket.emit("note:move", { id: noteId, x: note.x, y: note.y });
-      }
+    if (!dragging) return;
+    dragging = false;
+    noteEl.classList.remove("dragging");
+    // Final accurate emit
+    for (const [id] of groupOrigPositions) {
+      const n = notes.get(id);
+      if (n) socket.emit("note:move", { id, x: n.x, y: n.y });
     }
   });
 }
@@ -317,6 +461,7 @@ function setupResize(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
       note.width = newW;
       note.height = newH;
     }
+    refreshConnectorsForNote(noteId);
   });
 
   handle.addEventListener("pointerup", () => {
@@ -350,7 +495,7 @@ function showColorPicker(noteId: string, noteEl: HTMLElement) {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       socket.emit("note:color", { id: noteId, color: hex });
-      noteEl.style.backgroundColor = hex;
+      applyColorToNoteEl(noteEl, hex);
       const note = notes.get(noteId);
       if (note) note.color = hex;
       cleanup();
@@ -436,24 +581,591 @@ function removeUserBadge(id: string) {
   }
 }
 
+// --- Mode toggle ---
+function setConnectMode(on: boolean): void {
+  connectMode = on;
+  connectSourceId = null;
+  document.body.classList.toggle("mode-connect", on);
+  connectModeBtn.classList.toggle("active", on);
+  if (on) setFrameMode(false);
+  document.querySelectorAll(".sticky-note.connect-source").forEach((n) => n.classList.remove("connect-source"));
+}
+
+function setFrameMode(on: boolean): void {
+  frameMode = on;
+  document.body.classList.toggle("mode-frame", on);
+  frameModeBtn.classList.toggle("active", on);
+  if (on) setConnectMode(false);
+}
+
+connectModeBtn.addEventListener("click", () => setConnectMode(!connectMode));
+frameModeBtn.addEventListener("click", () => setFrameMode(!frameMode));
+
+// --- Connector rendering ---
+function noteCenter(note: StickyNote): { cx: number; cy: number } {
+  return { cx: note.x + note.width / 2, cy: note.y + note.height / 2 };
+}
+
+function renderConnector(connector: Connector): void {
+  let line = connectorLayer.querySelector(`[data-connector-id="${connector.id}"]`) as SVGLineElement | null;
+  const from = notes.get(connector.fromNoteId);
+  const to = notes.get(connector.toNoteId);
+  if (!from || !to) {
+    if (line) line.remove();
+    return;
+  }
+  const { cx: x1, cy: y1 } = noteCenter(from);
+  const { cx: x2, cy: y2 } = noteCenter(to);
+  if (!line) {
+    line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("data-connector-id", connector.id);
+    line.classList.add("connector-line");
+    line.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (confirm("このコネクタを削除しますか？")) {
+        socket.emit("connector:delete", { id: connector.id });
+      }
+    });
+    connectorLayer.appendChild(line);
+  }
+  line.setAttribute("x1", String(x1));
+  line.setAttribute("y1", String(y1));
+  line.setAttribute("x2", String(x2));
+  line.setAttribute("y2", String(y2));
+  line.setAttribute("stroke", connector.color);
+  (line as unknown as HTMLElement).style.color = connector.color;
+  if (connector.style === "arrow") {
+    line.setAttribute("marker-end", "url(#arrowhead)");
+  } else {
+    line.removeAttribute("marker-end");
+  }
+}
+
+function removeConnectorEl(id: string): void {
+  connectorLayer.querySelector(`[data-connector-id="${id}"]`)?.remove();
+}
+
+function refreshConnectorsForNote(noteId: string): void {
+  for (const c of connectors.values()) {
+    if (c.fromNoteId === noteId || c.toNoteId === noteId) {
+      renderConnector(c);
+    }
+  }
+}
+
+function refreshAllConnectors(): void {
+  for (const c of connectors.values()) renderConnector(c);
+}
+
+// --- Frame rendering ---
+function renderFrame(frame: Frame): HTMLElement {
+  let el = document.getElementById(`frame-${frame.id}`);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = `frame-${frame.id}`;
+    el.className = "frame-element";
+
+    const title = document.createElement("div");
+    title.className = "frame-title";
+    title.contentEditable = "true";
+    title.spellcheck = false;
+    title.addEventListener("pointerdown", (e) => e.stopPropagation());
+    title.addEventListener("blur", () => {
+      socket.emit("frame:update", { id: frame.id, title: title.textContent || "" });
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "frame-actions";
+    const delBtn = document.createElement("button");
+    delBtn.className = "note-action-btn";
+    delBtn.textContent = "✕";
+    delBtn.title = "Delete frame";
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      socket.emit("frame:delete", { id: frame.id });
+    });
+    actions.appendChild(delBtn);
+
+    const resize = document.createElement("div");
+    resize.className = "frame-resize";
+
+    el.append(title, actions, resize);
+    frameLayer.appendChild(el);
+
+    setupFrameDrag(el, frame.id);
+    setupFrameResize(resize, el, frame.id);
+  }
+  el.style.left = `${frame.x}px`;
+  el.style.top = `${frame.y}px`;
+  el.style.width = `${frame.width}px`;
+  el.style.height = `${frame.height}px`;
+  el.style.borderColor = frame.color;
+  const titleEl = el.querySelector(".frame-title") as HTMLElement;
+  if (titleEl && document.activeElement !== titleEl) titleEl.textContent = frame.title;
+  return el;
+}
+
+function setupFrameDrag(el: HTMLElement, frameId: string): void {
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let origX = 0;
+  let origY = 0;
+  el.addEventListener("pointerdown", (e) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains("frame-resize") || target.classList.contains("frame-title") || target.tagName === "BUTTON") return;
+    e.stopPropagation();
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const f = frames.get(frameId);
+    if (f) { origX = f.x; origY = f.y; }
+    el.classList.add("dragging");
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = (e.clientX - startX) / scale;
+    const dy = (e.clientY - startY) / scale;
+    const nx = origX + dx;
+    const ny = origY + dy;
+    el.style.left = `${nx}px`;
+    el.style.top = `${ny}px`;
+    const f = frames.get(frameId);
+    if (f) { f.x = nx; f.y = ny; }
+  });
+  el.addEventListener("pointerup", () => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove("dragging");
+    const f = frames.get(frameId);
+    if (f) socket.emit("frame:update", { id: frameId, x: f.x, y: f.y });
+  });
+}
+
+function setupFrameResize(handle: HTMLElement, el: HTMLElement, frameId: string): void {
+  let resizing = false;
+  let startX = 0;
+  let startY = 0;
+  let origW = 0;
+  let origH = 0;
+  handle.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    resizing = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    const f = frames.get(frameId);
+    if (f) { origW = f.width; origH = f.height; }
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener("pointermove", (e) => {
+    if (!resizing) return;
+    const dw = (e.clientX - startX) / scale;
+    const dh = (e.clientY - startY) / scale;
+    const nw = Math.max(80, origW + dw);
+    const nh = Math.max(60, origH + dh);
+    el.style.width = `${nw}px`;
+    el.style.height = `${nh}px`;
+    const f = frames.get(frameId);
+    if (f) { f.width = nw; f.height = nh; }
+  });
+  handle.addEventListener("pointerup", () => {
+    if (!resizing) return;
+    resizing = false;
+    const f = frames.get(frameId);
+    if (f) socket.emit("frame:update", { id: frameId, width: f.width, height: f.height });
+  });
+}
+
+// --- Frame creation drag ---
+let frameDrawState: {
+  startX: number;
+  startY: number;
+  rectEl: HTMLElement;
+} | null = null;
+
+boardContainer.addEventListener("pointerdown", (e) => {
+  if (!frameMode) return;
+  if (e.target !== boardContainer && e.target !== board && e.target !== frameLayer) return;
+  const rect = boardContainer.getBoundingClientRect();
+  const startX = (e.clientX - rect.left - panX) / scale;
+  const startY = (e.clientY - rect.top - panY) / scale;
+  const rectEl = document.createElement("div");
+  rectEl.className = "frame-creating-rect";
+  rectEl.style.left = `${startX}px`;
+  rectEl.style.top = `${startY}px`;
+  rectEl.style.width = "0px";
+  rectEl.style.height = "0px";
+  board.appendChild(rectEl);
+  frameDrawState = { startX, startY, rectEl };
+  boardContainer.setPointerCapture(e.pointerId);
+  e.stopPropagation();
+});
+
+boardContainer.addEventListener("pointermove", (e) => {
+  if (!frameDrawState) return;
+  const rect = boardContainer.getBoundingClientRect();
+  const cx = (e.clientX - rect.left - panX) / scale;
+  const cy = (e.clientY - rect.top - panY) / scale;
+  const x = Math.min(frameDrawState.startX, cx);
+  const y = Math.min(frameDrawState.startY, cy);
+  const w = Math.abs(cx - frameDrawState.startX);
+  const h = Math.abs(cy - frameDrawState.startY);
+  frameDrawState.rectEl.style.left = `${x}px`;
+  frameDrawState.rectEl.style.top = `${y}px`;
+  frameDrawState.rectEl.style.width = `${w}px`;
+  frameDrawState.rectEl.style.height = `${h}px`;
+});
+
+boardContainer.addEventListener("pointerup", () => {
+  if (!frameDrawState) return;
+  const r = frameDrawState.rectEl.getBoundingClientRect();
+  const x = parseFloat(frameDrawState.rectEl.style.left);
+  const y = parseFloat(frameDrawState.rectEl.style.top);
+  const w = parseFloat(frameDrawState.rectEl.style.width);
+  const h = parseFloat(frameDrawState.rectEl.style.height);
+  frameDrawState.rectEl.remove();
+  frameDrawState = null;
+  if (w > 20 && h > 20) {
+    socket.emit("frame:create", {
+      x, y, width: w, height: h,
+      color: "#475569",
+      title: "Frame",
+    });
+  }
+  setFrameMode(false);
+});
+
+// --- Connector source/target picking ---
+function handleNoteClickForConnect(noteId: string, noteEl: HTMLElement): boolean {
+  if (!connectMode) return false;
+  if (connectSourceId === null) {
+    connectSourceId = noteId;
+    noteEl.classList.add("connect-source");
+    return true;
+  }
+  if (connectSourceId !== noteId) {
+    socket.emit("connector:create", {
+      fromNoteId: connectSourceId,
+      toNoteId: noteId,
+      style: "arrow",
+      color: "#475569",
+    });
+  }
+  document.querySelectorAll(".sticky-note.connect-source").forEach((n) => n.classList.remove("connect-source"));
+  connectSourceId = null;
+  setConnectMode(false);
+  return true;
+}
+
+// --- Multi-select rectangle ---
+let selectionDrawState: {
+  startX: number;
+  startY: number;
+  rectEl: HTMLElement;
+} | null = null;
+
+function clearNoteSelection(): void {
+  for (const id of selectedNoteIds) {
+    document.getElementById(`note-${id}`)?.classList.remove("selected");
+  }
+  selectedNoteIds.clear();
+}
+
+function selectNote(noteId: string, additive: boolean): void {
+  if (!additive) clearNoteSelection();
+  selectedNoteIds.add(noteId);
+  document.getElementById(`note-${noteId}`)?.classList.add("selected");
+}
+
+function toggleNoteSelection(noteId: string): void {
+  if (selectedNoteIds.has(noteId)) {
+    selectedNoteIds.delete(noteId);
+    document.getElementById(`note-${noteId}`)?.classList.remove("selected");
+  } else {
+    selectedNoteIds.add(noteId);
+    document.getElementById(`note-${noteId}`)?.classList.add("selected");
+  }
+}
+
+boardContainer.addEventListener("pointerdown", (e) => {
+  if (frameMode || connectMode) return;
+  if (!e.shiftKey) return;
+  if (e.target !== boardContainer && e.target !== board) return;
+  e.stopPropagation();
+  const rect = boardContainer.getBoundingClientRect();
+  const startX = (e.clientX - rect.left - panX) / scale;
+  const startY = (e.clientY - rect.top - panY) / scale;
+  const rectEl = document.createElement("div");
+  rectEl.id = "selection-rect";
+  rectEl.style.left = `${startX}px`;
+  rectEl.style.top = `${startY}px`;
+  rectEl.style.width = "0";
+  rectEl.style.height = "0";
+  board.appendChild(rectEl);
+  selectionDrawState = { startX, startY, rectEl };
+  boardContainer.setPointerCapture(e.pointerId);
+});
+
+boardContainer.addEventListener("pointermove", (e) => {
+  if (!selectionDrawState) return;
+  const rect = boardContainer.getBoundingClientRect();
+  const cx = (e.clientX - rect.left - panX) / scale;
+  const cy = (e.clientY - rect.top - panY) / scale;
+  const x = Math.min(selectionDrawState.startX, cx);
+  const y = Math.min(selectionDrawState.startY, cy);
+  const w = Math.abs(cx - selectionDrawState.startX);
+  const h = Math.abs(cy - selectionDrawState.startY);
+  selectionDrawState.rectEl.style.left = `${x}px`;
+  selectionDrawState.rectEl.style.top = `${y}px`;
+  selectionDrawState.rectEl.style.width = `${w}px`;
+  selectionDrawState.rectEl.style.height = `${h}px`;
+});
+
+boardContainer.addEventListener("pointerup", () => {
+  if (!selectionDrawState) return;
+  const x1 = parseFloat(selectionDrawState.rectEl.style.left);
+  const y1 = parseFloat(selectionDrawState.rectEl.style.top);
+  const x2 = x1 + parseFloat(selectionDrawState.rectEl.style.width);
+  const y2 = y1 + parseFloat(selectionDrawState.rectEl.style.height);
+  selectionDrawState.rectEl.remove();
+  selectionDrawState = null;
+  clearNoteSelection();
+  for (const note of notes.values()) {
+    if (note.x + note.width >= x1 && note.x <= x2 && note.y + note.height >= y1 && note.y <= y2) {
+      selectNote(note.id, true);
+    }
+  }
+});
+
+// --- Keyboard shortcuts ---
+let lastMouseBoardX = 200;
+let lastMouseBoardY = 200;
+
+boardContainer.addEventListener("pointermove", (e) => {
+  const rect = boardContainer.getBoundingClientRect();
+  lastMouseBoardX = (e.clientX - rect.left - panX) / scale;
+  lastMouseBoardY = (e.clientY - rect.top - panY) / scale;
+});
+
+function isEditingText(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  return active.isContentEditable || active.tagName === "INPUT" || active.tagName === "TEXTAREA";
+}
+
+document.addEventListener("keydown", (e) => {
+  const active = document.activeElement;
+  const editingNote = active instanceof HTMLElement && active.classList.contains("note-text");
+
+  // Ctrl+B inside note text → bold
+  if (editingNote && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+    e.preventDefault();
+    document.execCommand("bold");
+    const noteEl = active.closest(".sticky-note") as HTMLElement | null;
+    if (noteEl) {
+      const id = noteEl.id.replace(/^note-/, "");
+      flushNoteEdit(id, active);
+    }
+    return;
+  }
+
+  if (isEditingText()) return;
+
+  // Ctrl+C / Ctrl+V — copy/paste selected notes
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+    if (selectedNoteIds.size === 0) return;
+    clipboardNotes = Array.from(selectedNoteIds)
+      .map((id) => notes.get(id))
+      .filter((n): n is StickyNote => Boolean(n))
+      .map((n) => ({ ...n }));
+    e.preventDefault();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+    if (clipboardNotes.length === 0) return;
+    e.preventDefault();
+    const minX = Math.min(...clipboardNotes.map((n) => n.x));
+    const minY = Math.min(...clipboardNotes.map((n) => n.y));
+    for (const n of clipboardNotes) {
+      const dx = n.x - minX;
+      const dy = n.y - minY;
+      socket.emit("note:duplicate", {
+        sourceId: n.id,
+        x: lastMouseBoardX + dx,
+        y: lastMouseBoardY + dy,
+      });
+    }
+    return;
+  }
+
+  // Delete / Backspace — delete selected notes
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedNoteIds.size > 0) {
+    e.preventDefault();
+    deleteSelectedNotes();
+    return;
+  }
+
+  // Ctrl+Z — undo last delete
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+    e.preventDefault();
+    performUndo();
+    return;
+  }
+
+  // Esc — exit modes / clear selection
+  if (e.key === "Escape") {
+    setConnectMode(false);
+    setFrameMode(false);
+    clearNoteSelection();
+    return;
+  }
+
+  // C / F shortcuts (mode toggles)
+  if (e.key.toLowerCase() === "c" && !e.ctrlKey && !e.metaKey) {
+    setConnectMode(!connectMode);
+    return;
+  }
+  if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
+    setFrameMode(!frameMode);
+    return;
+  }
+});
+
+function deleteSelectedNotes(): void {
+  const snapshot: StickyNote[] = [];
+  for (const id of selectedNoteIds) {
+    const n = notes.get(id);
+    if (n) snapshot.push({ ...n });
+  }
+  if (snapshot.length === 0) return;
+  pushUndo({ kind: "delete", notes: snapshot });
+  for (const n of snapshot) {
+    socket.emit("note:delete", { id: n.id });
+  }
+  selectedNoteIds.clear();
+}
+
+function pushUndo(entry: DeleteUndoEntry): void {
+  undoStack.push(entry);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+}
+
+function performUndo(): void {
+  const entry = undoStack.pop();
+  if (!entry) return;
+  if (entry.kind === "delete") {
+    for (const n of entry.notes) {
+      socket.emit("note:restore", { note: n });
+    }
+  }
+}
+
 // --- Export ---
 exportBtn.addEventListener("click", () => {
   window.open(`/api/boards/${boardId}/export.md`, "_blank");
 });
 
+// --- Import ---
+let pendingImport: { fileName: string; markdown: string } | null = null;
+
+importBtn.addEventListener("click", () => importFileInput.click());
+
+importFileInput.addEventListener("change", async () => {
+  const file = importFileInput.files?.[0];
+  if (!file) return;
+  importFileInput.value = "";
+  const text = await file.text();
+
+  // Cheap pre-validation client-side: count fence blocks for the summary.
+  const noteCount = (text.match(/```yaml\s+note\s*\n/g) || []).length;
+  const connCount = (text.match(/```yaml\s+connector\s*\n/g) || []).length;
+  const frameCount = (text.match(/```yaml\s+frame\s*\n/g) || []).length;
+
+  if (noteCount + connCount + frameCount === 0) {
+    alert("インポートできるデータが見つかりません。\nエクスポート済みの Ephemeral Board の Markdown ファイルを選択してください。");
+    return;
+  }
+
+  pendingImport = { fileName: file.name, markdown: text };
+  importSummaryEl.innerHTML =
+    `ファイル <b>${escapeHtml(file.name)}</b> をインポートしますか？<br>` +
+    `・付箋: ${noteCount} 件<br>` +
+    `・コネクタ: ${connCount} 件<br>` +
+    `・フレーム: ${frameCount} 件`;
+  importConfirmDialog.classList.remove("hidden");
+});
+
+importCancelBtn.addEventListener("click", () => {
+  pendingImport = null;
+  importConfirmDialog.classList.add("hidden");
+});
+
+importConfirmBtn.addEventListener("click", async () => {
+  if (!pendingImport) return;
+  const { markdown } = pendingImport;
+  importConfirmDialog.classList.add("hidden");
+  pendingImport = null;
+  try {
+    const res = await fetch(`/api/boards/${boardId}/import`, {
+      method: "POST",
+      headers: { "Content-Type": "text/markdown" },
+      body: markdown,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      alert(`インポートに失敗しました: ${err.error || res.statusText}`);
+      return;
+    }
+    // Server broadcasts board:sync to all clients including this one.
+  } catch (err) {
+    alert(`インポートに失敗しました: ${(err as Error).message}`);
+  }
+});
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // --- Socket listeners ---
 function setupSocketListeners() {
-  socket.on("board:sync", (data: { notes: StickyNote[]; users: Record<string, { name: string; color: string }> }) => {
+  socket.on("board:sync", (data: {
+    schemaVersion?: number;
+    notes: StickyNote[];
+    connectors?: Connector[];
+    frames?: Frame[];
+    users: Record<string, { name: string; color: string }>;
+  }) => {
     // Clear existing
     board.querySelectorAll(".sticky-note").forEach((el) => el.remove());
+    connectorLayer.querySelectorAll("[data-connector-id]").forEach((el) => el.remove());
+    frameLayer.querySelectorAll(".frame-element").forEach((el) => el.remove());
     notes.clear();
+    connectors.clear();
+    frames.clear();
+    selectedNoteIds.clear();
 
     for (const note of data.notes) {
       notes.set(note.id, note);
       renderNote(note);
     }
+    for (const f of data.frames || []) {
+      frames.set(f.id, f);
+      renderFrame(f);
+    }
+    for (const c of data.connectors || []) {
+      connectors.set(c.id, c);
+      renderConnector(c);
+    }
 
-    // Render user badges
+    // Reset existing user badges then re-render
+    userBadges.forEach((badge) => badge.remove());
+    userBadges.clear();
     for (const [id, user] of Object.entries(data.users)) {
       addUserBadge(id, user.name, user.color);
     }
@@ -474,24 +1186,48 @@ function setupSocketListeners() {
       el.style.left = `${data.x}px`;
       el.style.top = `${data.y}px`;
     }
+    refreshConnectorsForNote(data.id);
   });
 
   socket.on("note:edited", (data: { id: string; text: string }) => {
     const note = notes.get(data.id);
     if (!note) return;
-    note.text = data.text;
+    const safe = sanitizeNoteHtml(data.text);
+    note.text = safe;
     const el = document.getElementById(`note-${data.id}`);
     if (el) {
       const textEl = el.querySelector(".note-text") as HTMLElement;
       if (textEl && document.activeElement !== textEl) {
-        textEl.innerText = data.text;
+        textEl.innerHTML = safe;
       }
     }
   });
 
-  socket.on("note:deleted", (data: { id: string }) => {
+  socket.on("note:formatted", (data: { id: string; fontSize?: number; align?: TextAlign }) => {
+    const note = notes.get(data.id);
+    if (!note) return;
+    const el = document.getElementById(`note-${data.id}`);
+    const textEl = el?.querySelector(".note-text") as HTMLElement | null;
+    if (data.fontSize !== undefined) {
+      note.fontSize = data.fontSize;
+      if (textEl) textEl.style.fontSize = `${data.fontSize}px`;
+    }
+    if (data.align !== undefined) {
+      note.align = data.align;
+      if (textEl) textEl.style.textAlign = data.align;
+    }
+  });
+
+  socket.on("note:deleted", (data: { id: string; removedConnectorIds?: string[] }) => {
     notes.delete(data.id);
+    selectedNoteIds.delete(data.id);
     document.getElementById(`note-${data.id}`)?.remove();
+    if (data.removedConnectorIds) {
+      for (const cid of data.removedConnectorIds) {
+        connectors.delete(cid);
+        removeConnectorEl(cid);
+      }
+    }
   });
 
   socket.on("note:color-changed", (data: { id: string; color: string }) => {
@@ -499,7 +1235,7 @@ function setupSocketListeners() {
     if (!note) return;
     note.color = data.color;
     const el = document.getElementById(`note-${data.id}`);
-    if (el) el.style.backgroundColor = data.color;
+    if (el) applyColorToNoteEl(el, data.color);
   });
 
   socket.on("note:fronted", (data: { id: string; zIndex: number }) => {
@@ -520,6 +1256,32 @@ function setupSocketListeners() {
       el.style.width = `${data.width}px`;
       el.style.height = `${data.height}px`;
     }
+    refreshConnectorsForNote(data.id);
+  });
+
+  socket.on("connector:created", (c: Connector) => {
+    connectors.set(c.id, c);
+    renderConnector(c);
+  });
+
+  socket.on("connector:deleted", (data: { id: string }) => {
+    connectors.delete(data.id);
+    removeConnectorEl(data.id);
+  });
+
+  socket.on("frame:created", (f: Frame) => {
+    frames.set(f.id, f);
+    renderFrame(f);
+  });
+
+  socket.on("frame:updated", (f: Frame) => {
+    frames.set(f.id, f);
+    renderFrame(f);
+  });
+
+  socket.on("frame:deleted", (data: { id: string }) => {
+    frames.delete(data.id);
+    document.getElementById(`frame-${data.id}`)?.remove();
   });
 
   socket.on("cursor:moved", renderCursor);
