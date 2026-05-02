@@ -1,34 +1,34 @@
+import { createServer } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
-import { createServer } from "http";
 import { Server } from "socket.io";
-import path from "path";
-import { fileURLToPath } from "url";
-import {
-  getOrCreateBoard,
-  getBoardSnapshot,
-  createNote,
-  moveNote,
-  editNote,
-  deleteNote,
-  changeNoteColor,
-  bringToFront,
-  resizeNote,
-  assignUserColor,
-  startCleanup,
-  createConnector,
-  deleteConnector,
-  createFrame,
-  updateFrame,
-  deleteFrame,
-  duplicateNote,
-  restoreNote,
-  replaceBoard,
-} from "./state.js";
 import { exportAsMarkdown } from "./export.js";
 import { parseMarkdownImport } from "./import.js";
 import { sanitizeNoteHtmlOnServer } from "./sanitize-server.js";
-import { FONT_SIZES, type TextAlign, type ConnectorStyle, type StickyNote, type Connector, type Frame } from "./shared.js";
-import { formatNote } from "./state.js";
+import { type ConnectorStyle, FONT_SIZES, type StickyNote, type TextAlign } from "./shared.js";
+import {
+  assignUserColor,
+  bringToFront,
+  changeNoteColor,
+  createConnector,
+  createFrame,
+  createNote,
+  deleteConnector,
+  deleteFrame,
+  deleteNote,
+  duplicateNote,
+  editNote,
+  formatNote,
+  getBoardSnapshot,
+  getOrCreateBoard,
+  moveNote,
+  replaceBoard,
+  resizeNote,
+  restoreNote,
+  startCleanup,
+  updateFrame,
+} from "./state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -40,16 +40,16 @@ const io = new Server(server, {
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/api/boards/:boardId/import", express.text({ type: ["text/*", "application/octet-stream"], limit: "1mb" }));
+app.use(
+  "/api/boards/:boardId/import",
+  express.text({ type: ["text/*", "application/octet-stream"], limit: "1mb" }),
+);
 
 // Markdown export
 app.get("/api/boards/:boardId/export.md", (req, res) => {
   const md = exportAsMarkdown(req.params.boardId);
   res.setHeader("Content-Type", "text/markdown; charset=utf-8");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="board-${req.params.boardId}.md"`
-  );
+  res.setHeader("Content-Disposition", `attachment; filename="board-${req.params.boardId}.md"`);
   res.send(md);
 });
 
@@ -60,7 +60,7 @@ app.post("/api/boards/:boardId/import", (req, res) => {
   if (!body) {
     return res.status(400).json({ error: "Empty body" });
   }
-  let parsed;
+  let parsed: ReturnType<typeof parseMarkdownImport>;
   try {
     parsed = parseMarkdownImport(body);
   } catch (err) {
@@ -90,7 +90,7 @@ const boardUsers = new Map<string, Map<string, { name: string; color: string }>>
 io.on("connection", (socket) => {
   let currentBoard: string | null = null;
   let userName = "";
-  let userColor = assignUserColor();
+  const userColor = assignUserColor();
 
   socket.on("board:join", (data: { boardId: string; name: string }) => {
     currentBoard = data.boardId;
@@ -209,11 +209,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("note:duplicate", (data: {
-    sourceId: string;
-    x: number;
-    y: number;
-  }) => {
+  socket.on("note:duplicate", (data: { sourceId: string; x: number; y: number }) => {
     if (!currentBoard) return;
     const board = getOrCreateBoard(currentBoard);
     const source = board.notes.get(data.sourceId);
@@ -228,7 +224,7 @@ io.on("connection", (socket) => {
         fontSize: source.fontSize,
         align: source.align,
       },
-      { x: data.x, y: data.y, createdBy: userName }
+      { x: data.x, y: data.y, createdBy: userName },
     );
     io.to(currentBoard).emit("note:created", note);
   });
@@ -242,18 +238,16 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("connector:create", (data: {
-    fromNoteId: string;
-    toNoteId: string;
-    style: ConnectorStyle;
-    color: string;
-  }) => {
-    if (!currentBoard) return;
-    const connector = createConnector(currentBoard, data);
-    if (connector) {
-      io.to(currentBoard).emit("connector:created", connector);
-    }
-  });
+  socket.on(
+    "connector:create",
+    (data: { fromNoteId: string; toNoteId: string; style: ConnectorStyle; color: string }) => {
+      if (!currentBoard) return;
+      const connector = createConnector(currentBoard, data);
+      if (connector) {
+        io.to(currentBoard).emit("connector:created", connector);
+      }
+    },
+  );
 
   socket.on("connector:delete", (data: { id: string }) => {
     if (!currentBoard) return;
@@ -262,35 +256,41 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("frame:create", (data: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    color: string;
-    title: string;
-  }) => {
-    if (!currentBoard) return;
-    const frame = createFrame(currentBoard, data);
-    io.to(currentBoard).emit("frame:created", frame);
-  });
+  socket.on(
+    "frame:create",
+    (data: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      color: string;
+      title: string;
+    }) => {
+      if (!currentBoard) return;
+      const frame = createFrame(currentBoard, data);
+      io.to(currentBoard).emit("frame:created", frame);
+    },
+  );
 
-  socket.on("frame:update", (data: {
-    id: string;
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-    color?: string;
-    title?: string;
-  }) => {
-    if (!currentBoard) return;
-    const { id, ...changes } = data;
-    const frame = updateFrame(currentBoard, id, changes);
-    if (frame) {
-      socket.to(currentBoard).emit("frame:updated", frame);
-    }
-  });
+  socket.on(
+    "frame:update",
+    (data: {
+      id: string;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      color?: string;
+      title?: string;
+    }) => {
+      if (!currentBoard) return;
+      const { id, ...changes } = data;
+      const frame = updateFrame(currentBoard, id, changes);
+      if (frame) {
+        socket.to(currentBoard).emit("frame:updated", frame);
+      }
+    },
+  );
 
   socket.on("frame:delete", (data: { id: string }) => {
     if (!currentBoard) return;

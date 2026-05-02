@@ -11,7 +11,7 @@ function sanitizeStyleAttribute(value: string): string {
     .map((rule) => rule.trim())
     .filter((rule) => rule.length > 0)
     .map((rule) => {
-      const m = STYLE_ALLOWLIST.exec(rule + ";");
+      const m = STYLE_ALLOWLIST.exec(`${rule};`);
       return m ? `${m[1]}:${m[2]}` : null;
     })
     .filter((r): r is string => r !== null)

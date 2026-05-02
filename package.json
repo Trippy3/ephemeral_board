@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "concurrently \"tsx watch server.ts\" \"esbuild public/app.ts --bundle --outfile=public/app.js --watch --sourcemap\"",
     "build": "esbuild public/app.ts --bundle --outfile=public/app.js --minify",
-    "start": "tsx server.ts"
+    "start": "tsx server.ts",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "check:ci": "biome check ."
   },
   "dependencies": {
     "dompurify": "^3.4.2",
@@ -22,6 +26,7 @@
     ]
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.14",
     "@types/express": "^5.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",

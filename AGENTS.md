@@ -72,14 +72,19 @@ pnpm dev      # サーバー + クライアントの watch ビルド
 
 | 目的 | コマンド |
 |------|----------|
+| Lint + Format チェックのみ | `pnpm check:ci` |
+| Lint + Format 自動修正 | `pnpm check` |
 | 型チェック | `pnpm exec tsc --noEmit` |
 | クライアント本番ビルド | `pnpm build` |
 | サーバー単体起動 (watch なし) | `pnpm start` |
 
+Linter / Formatter は **Biome** (`biome.json`) を使用。
+`.claude/settings.local.json` の PostToolUse hook により、エージェントがファイルを編集すると自動で `biome check --write` が走ります。
+
 **コードを変更したら、コミット前に必ず以下が通ることを確認してください:**
 
 ```bash
-pnpm exec tsc --noEmit && pnpm build
+pnpm check:ci && pnpm exec tsc --noEmit && pnpm build
 ```
 
 ### 動作確認のポイント

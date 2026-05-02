@@ -1,15 +1,15 @@
 import yaml from "js-yaml";
 import { z } from "zod";
-import {
-  type StickyNote,
-  type Connector,
-  type Frame,
-  type TextAlign,
-  type ConnectorStyle,
-  DEFAULT_FONT_SIZE,
-  DEFAULT_ALIGN,
-} from "./shared.js";
 import { sanitizeNoteHtmlOnServer } from "./sanitize-server.js";
+import {
+  type Connector,
+  type ConnectorStyle,
+  DEFAULT_ALIGN,
+  DEFAULT_FONT_SIZE,
+  type Frame,
+  type StickyNote,
+  type TextAlign,
+} from "./shared.js";
 
 const MAX_BYTES = 1_000_000; // 1 MB
 const MAX_ELEMENTS = 1000;
@@ -83,8 +83,7 @@ export function parseMarkdownImport(markdown: string): ImportResult {
   const noteIds = new Set<string>();
 
   let totalElements = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FENCE_PATTERN.exec(markdown)) !== null) {
+  for (const m of markdown.matchAll(FENCE_PATTERN)) {
     totalElements++;
     if (totalElements > MAX_ELEMENTS) {
       throw new Error(`Too many elements (limit ${MAX_ELEMENTS})`);
@@ -160,7 +159,7 @@ export function parseMarkdownImport(markdown: string): ImportResult {
 
   // Drop connectors that reference unknown notes (orphan-prevention).
   const filteredConnectors = connectors.filter(
-    (c) => noteIds.has(c.fromNoteId) && noteIds.has(c.toNoteId)
+    (c) => noteIds.has(c.fromNoteId) && noteIds.has(c.toNoteId),
   );
 
   return { notes, connectors: filteredConnectors, frames };

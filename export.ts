@@ -1,6 +1,12 @@
 import yaml from "js-yaml";
+import {
+  type Connector,
+  type Frame,
+  NOTE_COLORS,
+  SCHEMA_VERSION,
+  type StickyNote,
+} from "./shared.js";
 import { getBoardSnapshot } from "./state.js";
-import { NOTE_COLORS, SCHEMA_VERSION, type StickyNote, type Connector, type Frame } from "./shared.js";
 
 const colorLabelMap = new Map(NOTE_COLORS.map((c) => [c.hex.toLowerCase(), c.label]));
 
@@ -50,7 +56,7 @@ function noteToYamlBlock(note: StickyNote): string {
     zIndex: note.zIndex,
     text: note.text,
   };
-  return "```yaml note\n" + yaml.dump(data, { lineWidth: 120 }) + "```";
+  return `\`\`\`yaml note\n${yaml.dump(data, { lineWidth: 120 })}\`\`\``;
 }
 
 function connectorToYamlBlock(c: Connector): string {
@@ -64,7 +70,7 @@ function connectorToYamlBlock(c: Connector): string {
     createdAt: new Date(c.createdAt).toISOString(),
     updatedAt: new Date(c.updatedAt).toISOString(),
   };
-  return "```yaml connector\n" + yaml.dump(data, { lineWidth: 120 }) + "```";
+  return `\`\`\`yaml connector\n${yaml.dump(data, { lineWidth: 120 })}\`\`\``;
 }
 
 function frameToYamlBlock(f: Frame): string {
@@ -80,7 +86,7 @@ function frameToYamlBlock(f: Frame): string {
     createdAt: new Date(f.createdAt).toISOString(),
     updatedAt: new Date(f.updatedAt).toISOString(),
   };
-  return "```yaml frame\n" + yaml.dump(data, { lineWidth: 120 }) + "```";
+  return `\`\`\`yaml frame\n${yaml.dump(data, { lineWidth: 120 })}\`\`\``;
 }
 
 export function exportAsMarkdown(boardId: string): string {
@@ -99,7 +105,7 @@ export function exportAsMarkdown(boardId: string): string {
   ].join("\n");
 
   if (notes.length === 0 && connectors.length === 0 && frames.length === 0) {
-    return front + "\n_No content on this board._\n";
+    return `${front}\n_No content on this board._\n`;
   }
 
   // Human-readable summary: notes grouped by color
@@ -126,7 +132,9 @@ export function exportAsMarkdown(boardId: string): string {
   }
   if (connectors.length > 0) {
     summary += "### Connections\n\n";
-    const noteTextById = new Map(notes.map((n) => [n.id, htmlToPlainSummary(n.text).split("\n")[0] || "(empty)"]));
+    const noteTextById = new Map(
+      notes.map((n) => [n.id, htmlToPlainSummary(n.text).split("\n")[0] || "(empty)"]),
+    );
     for (const c of connectors) {
       const from = noteTextById.get(c.fromNoteId) || c.fromNoteId;
       const to = noteTextById.get(c.toNoteId) || c.toNoteId;
@@ -145,9 +153,9 @@ export function exportAsMarkdown(boardId: string): string {
 
   // Machine-readable metadata blocks (full state for round-trip)
   let meta = "## Data\n\n_Do not hand-edit blocks below if you intend to re-import._\n\n";
-  for (const n of notes) meta += noteToYamlBlock(n) + "\n\n";
-  for (const c of connectors) meta += connectorToYamlBlock(c) + "\n\n";
-  for (const f of frames) meta += frameToYamlBlock(f) + "\n\n";
+  for (const n of notes) meta += `${noteToYamlBlock(n)}\n\n`;
+  for (const c of connectors) meta += `${connectorToYamlBlock(c)}\n\n`;
+  for (const f of frames) meta += `${frameToYamlBlock(f)}\n\n`;
 
   return front + summary + meta;
 }

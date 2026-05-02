@@ -1,17 +1,17 @@
 import { nanoid } from "nanoid";
 import {
-  StickyNote,
-  Connector,
-  Frame,
-  BoardSnapshot,
-  SCHEMA_VERSION,
-  DEFAULT_FONT_SIZE,
+  type BoardSnapshot,
+  type Connector,
+  type ConnectorStyle,
   DEFAULT_ALIGN,
-  TextAlign,
-  ConnectorStyle,
+  DEFAULT_FONT_SIZE,
+  type Frame,
+  SCHEMA_VERSION,
+  type StickyNote,
+  type TextAlign,
 } from "./shared.js";
 
-export type { StickyNote, Connector, Frame };
+export type { Connector, Frame, StickyNote };
 
 export interface BoardState {
   id: string;
@@ -27,8 +27,14 @@ const CLEANUP_INTERVAL = 10 * 60 * 1000; // 10 minutes
 const BOARD_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const USER_COLORS = [
-  "#ef4444", "#f97316", "#eab308", "#22c55e",
-  "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899",
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#06b6d4",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
 ];
 let colorIndex = 0;
 
@@ -116,7 +122,7 @@ export function getBoardSnapshot(boardId: string): BoardSnapshot {
 
 export function createNote(
   boardId: string,
-  data: { x: number; y: number; color: string; createdBy: string }
+  data: { x: number; y: number; color: string; createdBy: string },
 ): StickyNote {
   const board = getOrCreateBoard(boardId);
   const now = Date.now();
@@ -143,8 +149,15 @@ export function createNote(
 
 export function duplicateNote(
   boardId: string,
-  source: { text: string; color: string; width: number; height: number; fontSize: number; align: TextAlign },
-  data: { x: number; y: number; createdBy: string }
+  source: {
+    text: string;
+    color: string;
+    width: number;
+    height: number;
+    fontSize: number;
+    align: TextAlign;
+  },
+  data: { x: number; y: number; createdBy: string },
 ): StickyNote {
   const board = getOrCreateBoard(boardId);
   const now = Date.now();
@@ -169,10 +182,7 @@ export function duplicateNote(
   return note;
 }
 
-export function restoreNote(
-  boardId: string,
-  note: StickyNote
-): StickyNote | null {
+export function restoreNote(boardId: string, note: StickyNote): StickyNote | null {
   const board = getOrCreateBoard(boardId);
   if (board.notes.has(note.id)) return null;
   const now = Date.now();
@@ -183,12 +193,7 @@ export function restoreNote(
   return restored;
 }
 
-export function moveNote(
-  boardId: string,
-  noteId: string,
-  x: number,
-  y: number
-): StickyNote | null {
+export function moveNote(boardId: string, noteId: string, x: number, y: number): StickyNote | null {
   const board = boards.get(boardId);
   if (!board) return null;
   const note = board.notes.get(noteId);
@@ -201,11 +206,7 @@ export function moveNote(
   return note;
 }
 
-export function editNote(
-  boardId: string,
-  noteId: string,
-  text: string
-): StickyNote | null {
+export function editNote(boardId: string, noteId: string, text: string): StickyNote | null {
   const board = boards.get(boardId);
   if (!board) return null;
   const note = board.notes.get(noteId);
@@ -220,7 +221,7 @@ export function editNote(
 export function formatNote(
   boardId: string,
   noteId: string,
-  data: { fontSize?: number; align?: TextAlign }
+  data: { fontSize?: number; align?: TextAlign },
 ): StickyNote | null {
   const board = boards.get(boardId);
   if (!board) return null;
@@ -234,7 +235,10 @@ export function formatNote(
   return note;
 }
 
-export function deleteNote(boardId: string, noteId: string): {
+export function deleteNote(
+  boardId: string,
+  noteId: string,
+): {
   deleted: boolean;
   removedConnectorIds: string[];
 } {
@@ -254,11 +258,7 @@ export function deleteNote(boardId: string, noteId: string): {
   return { deleted, removedConnectorIds };
 }
 
-export function changeNoteColor(
-  boardId: string,
-  noteId: string,
-  color: string
-): StickyNote | null {
+export function changeNoteColor(boardId: string, noteId: string, color: string): StickyNote | null {
   const board = boards.get(boardId);
   if (!board) return null;
   const note = board.notes.get(noteId);
@@ -270,10 +270,7 @@ export function changeNoteColor(
   return note;
 }
 
-export function bringToFront(
-  boardId: string,
-  noteId: string
-): number | null {
+export function bringToFront(boardId: string, noteId: string): number | null {
   const board = boards.get(boardId);
   if (!board) return null;
   const note = board.notes.get(noteId);
@@ -287,7 +284,7 @@ export function resizeNote(
   boardId: string,
   noteId: string,
   width: number,
-  height: number
+  height: number,
 ): StickyNote | null {
   const board = boards.get(boardId);
   if (!board) return null;
@@ -305,7 +302,7 @@ export function resizeNote(
 
 export function createConnector(
   boardId: string,
-  data: { fromNoteId: string; toNoteId: string; style: ConnectorStyle; color: string }
+  data: { fromNoteId: string; toNoteId: string; style: ConnectorStyle; color: string },
 ): Connector | null {
   const board = getOrCreateBoard(boardId);
   if (!board.notes.has(data.fromNoteId) || !board.notes.has(data.toNoteId)) {
@@ -339,7 +336,7 @@ export function deleteConnector(boardId: string, connectorId: string): boolean {
 
 export function createFrame(
   boardId: string,
-  data: { x: number; y: number; width: number; height: number; color: string; title: string }
+  data: { x: number; y: number; width: number; height: number; color: string; title: string },
 ): Frame {
   const board = getOrCreateBoard(boardId);
   const now = Date.now();
@@ -362,7 +359,7 @@ export function createFrame(
 export function updateFrame(
   boardId: string,
   frameId: string,
-  data: Partial<Pick<Frame, "x" | "y" | "width" | "height" | "color" | "title">>
+  data: Partial<Pick<Frame, "x" | "y" | "width" | "height" | "color" | "title">>,
 ): Frame | null {
   const board = boards.get(boardId);
   if (!board) return null;
@@ -392,7 +389,7 @@ export function deleteFrame(boardId: string, frameId: string): boolean {
 
 export function replaceBoard(
   boardId: string,
-  snapshot: { notes: StickyNote[]; connectors: Connector[]; frames: Frame[] }
+  snapshot: { notes: StickyNote[]; connectors: Connector[]; frames: Frame[] },
 ): BoardState {
   const now = Date.now();
   const board: BoardState = {

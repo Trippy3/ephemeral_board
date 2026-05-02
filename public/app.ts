@@ -1,13 +1,13 @@
-import { io, Socket } from "socket.io-client";
+import { io, type Socket } from "socket.io-client";
 import {
-  StickyNote,
-  Connector,
-  Frame,
-  NOTE_COLORS,
-  FONT_SIZES,
-  TextAlign,
-  DEFAULT_FONT_SIZE,
+  type Connector,
   DEFAULT_ALIGN,
+  DEFAULT_FONT_SIZE,
+  FONT_SIZES,
+  type Frame,
+  NOTE_COLORS,
+  type StickyNote,
+  type TextAlign,
 } from "../shared.js";
 import { sanitizeNoteHtml } from "./sanitize.js";
 
@@ -24,7 +24,7 @@ function throttle<T extends (...args: any[]) => void>(fn: T, ms: number): T {
 
 // --- State ---
 let socket: Socket;
-let boardId = location.pathname.slice(1) || "default";
+const boardId = location.pathname.slice(1) || "default";
 let selectedColor = "#fef08a";
 let scale = 1;
 let panX = 0;
@@ -130,19 +130,23 @@ boardContainer.addEventListener("pointerup", () => {
 });
 
 // Zoom
-boardContainer.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  const delta = e.deltaY > 0 ? -0.1 : 0.1;
-  const newScale = Math.min(3, Math.max(0.2, scale + delta));
-  // Zoom toward mouse position
-  const rect = boardContainer.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  panX = mx - (mx - panX) * (newScale / scale);
-  panY = my - (my - panY) * (newScale / scale);
-  scale = newScale;
-  updateTransform();
-}, { passive: false });
+boardContainer.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newScale = Math.min(3, Math.max(0.2, scale + delta));
+    // Zoom toward mouse position
+    const rect = boardContainer.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    updateTransform();
+  },
+  { passive: false },
+);
 
 zoomInBtn.addEventListener("click", () => {
   scale = Math.min(3, scale + 0.2);
@@ -202,7 +206,7 @@ function stepNoteFontSize(noteId: string, noteEl: HTMLElement, step: number): vo
   const noteData = notes.get(noteId);
   if (!noteData) return;
   const current = noteData.fontSize ?? DEFAULT_FONT_SIZE;
-  const idx = FONT_SIZES.indexOf(current as typeof FONT_SIZES[number]);
+  const idx = FONT_SIZES.indexOf(current as (typeof FONT_SIZES)[number]);
   const baseIdx = idx === -1 ? FONT_SIZES.indexOf(DEFAULT_FONT_SIZE) : idx;
   const nextIdx = Math.min(FONT_SIZES.length - 1, Math.max(0, baseIdx + step));
   const nextSize = FONT_SIZES[nextIdx];
@@ -317,7 +321,16 @@ function renderNote(note: StickyNote): HTMLElement {
     socket.emit("note:delete", { id: note.id });
   });
 
-  actions.append(boldBtn, alignLeftBtn, alignCenterBtn, alignRightBtn, sizeDownBtn, sizeUpBtn, colorBtn, deleteBtn);
+  actions.append(
+    boldBtn,
+    alignLeftBtn,
+    alignCenterBtn,
+    alignRightBtn,
+    sizeDownBtn,
+    sizeUpBtn,
+    colorBtn,
+    deleteBtn,
+  );
   header.append(author, actions);
 
   // Text (HTML-formatted, sanitized)
@@ -363,7 +376,8 @@ function setupDrag(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
       target.classList.contains("note-action-btn") ||
       target.classList.contains("resize-handle") ||
       target.contentEditable === "true"
-    ) return;
+    )
+      return;
 
     // Connect mode: clicking picks source/target instead of dragging
     if (connectMode) {
@@ -404,7 +418,10 @@ function setupDrag(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
       const nx = orig.x + dx;
       const ny = orig.y + dy;
       const n = notes.get(id);
-      if (n) { n.x = nx; n.y = ny; }
+      if (n) {
+        n.x = nx;
+        n.y = ny;
+      }
       const targetEl = document.getElementById(`note-${id}`);
       if (targetEl) {
         targetEl.style.left = `${nx}px`;
@@ -588,7 +605,9 @@ function setConnectMode(on: boolean): void {
   document.body.classList.toggle("mode-connect", on);
   connectModeBtn.classList.toggle("active", on);
   if (on) setFrameMode(false);
-  document.querySelectorAll(".sticky-note.connect-source").forEach((n) => n.classList.remove("connect-source"));
+  for (const n of document.querySelectorAll(".sticky-note.connect-source")) {
+    n.classList.remove("connect-source");
+  }
 }
 
 function setFrameMode(on: boolean): void {
@@ -607,7 +626,9 @@ function noteCenter(note: StickyNote): { cx: number; cy: number } {
 }
 
 function renderConnector(connector: Connector): void {
-  let line = connectorLayer.querySelector(`[data-connector-id="${connector.id}"]`) as SVGLineElement | null;
+  let line = connectorLayer.querySelector(
+    `[data-connector-id="${connector.id}"]`,
+  ) as SVGLineElement | null;
   const from = notes.get(connector.fromNoteId);
   const to = notes.get(connector.toNoteId);
   if (!from || !to) {
@@ -653,7 +674,7 @@ function refreshConnectorsForNote(noteId: string): void {
   }
 }
 
-function refreshAllConnectors(): void {
+function _refreshAllConnectors(): void {
   for (const c of connectors.values()) renderConnector(c);
 }
 
@@ -713,13 +734,21 @@ function setupFrameDrag(el: HTMLElement, frameId: string): void {
   let origY = 0;
   el.addEventListener("pointerdown", (e) => {
     const target = e.target as HTMLElement;
-    if (target.classList.contains("frame-resize") || target.classList.contains("frame-title") || target.tagName === "BUTTON") return;
+    if (
+      target.classList.contains("frame-resize") ||
+      target.classList.contains("frame-title") ||
+      target.tagName === "BUTTON"
+    )
+      return;
     e.stopPropagation();
     dragging = true;
     startX = e.clientX;
     startY = e.clientY;
     const f = frames.get(frameId);
-    if (f) { origX = f.x; origY = f.y; }
+    if (f) {
+      origX = f.x;
+      origY = f.y;
+    }
     el.classList.add("dragging");
     el.setPointerCapture(e.pointerId);
   });
@@ -732,7 +761,10 @@ function setupFrameDrag(el: HTMLElement, frameId: string): void {
     el.style.left = `${nx}px`;
     el.style.top = `${ny}px`;
     const f = frames.get(frameId);
-    if (f) { f.x = nx; f.y = ny; }
+    if (f) {
+      f.x = nx;
+      f.y = ny;
+    }
   });
   el.addEventListener("pointerup", () => {
     if (!dragging) return;
@@ -755,7 +787,10 @@ function setupFrameResize(handle: HTMLElement, el: HTMLElement, frameId: string)
     startX = e.clientX;
     startY = e.clientY;
     const f = frames.get(frameId);
-    if (f) { origW = f.width; origH = f.height; }
+    if (f) {
+      origW = f.width;
+      origH = f.height;
+    }
     handle.setPointerCapture(e.pointerId);
   });
   handle.addEventListener("pointermove", (e) => {
@@ -767,7 +802,10 @@ function setupFrameResize(handle: HTMLElement, el: HTMLElement, frameId: string)
     el.style.width = `${nw}px`;
     el.style.height = `${nh}px`;
     const f = frames.get(frameId);
-    if (f) { f.width = nw; f.height = nh; }
+    if (f) {
+      f.width = nw;
+      f.height = nh;
+    }
   });
   handle.addEventListener("pointerup", () => {
     if (!resizing) return;
@@ -819,7 +857,7 @@ boardContainer.addEventListener("pointermove", (e) => {
 
 boardContainer.addEventListener("pointerup", () => {
   if (!frameDrawState) return;
-  const r = frameDrawState.rectEl.getBoundingClientRect();
+  const _r = frameDrawState.rectEl.getBoundingClientRect();
   const x = parseFloat(frameDrawState.rectEl.style.left);
   const y = parseFloat(frameDrawState.rectEl.style.top);
   const w = parseFloat(frameDrawState.rectEl.style.width);
@@ -828,7 +866,10 @@ boardContainer.addEventListener("pointerup", () => {
   frameDrawState = null;
   if (w > 20 && h > 20) {
     socket.emit("frame:create", {
-      x, y, width: w, height: h,
+      x,
+      y,
+      width: w,
+      height: h,
       color: "#475569",
       title: "Frame",
     });
@@ -852,7 +893,9 @@ function handleNoteClickForConnect(noteId: string, noteEl: HTMLElement): boolean
       color: "#475569",
     });
   }
-  document.querySelectorAll(".sticky-note.connect-source").forEach((n) => n.classList.remove("connect-source"));
+  for (const n of document.querySelectorAll(".sticky-note.connect-source")) {
+    n.classList.remove("connect-source");
+  }
   connectSourceId = null;
   setConnectMode(false);
   return true;
@@ -1083,7 +1126,9 @@ importFileInput.addEventListener("change", async () => {
   const frameCount = (text.match(/```yaml\s+frame\s*\n/g) || []).length;
 
   if (noteCount + connCount + frameCount === 0) {
-    alert("インポートできるデータが見つかりません。\nエクスポート済みの Ephemeral Board の Markdown ファイルを選択してください。");
+    alert(
+      "インポートできるデータが見つかりません。\nエクスポート済みの Ephemeral Board の Markdown ファイルを選択してください。",
+    );
     return;
   }
 
@@ -1134,42 +1179,45 @@ function escapeHtml(s: string): string {
 
 // --- Socket listeners ---
 function setupSocketListeners() {
-  socket.on("board:sync", (data: {
-    schemaVersion?: number;
-    notes: StickyNote[];
-    connectors?: Connector[];
-    frames?: Frame[];
-    users: Record<string, { name: string; color: string }>;
-  }) => {
-    // Clear existing
-    board.querySelectorAll(".sticky-note").forEach((el) => el.remove());
-    connectorLayer.querySelectorAll("[data-connector-id]").forEach((el) => el.remove());
-    frameLayer.querySelectorAll(".frame-element").forEach((el) => el.remove());
-    notes.clear();
-    connectors.clear();
-    frames.clear();
-    selectedNoteIds.clear();
+  socket.on(
+    "board:sync",
+    (data: {
+      schemaVersion?: number;
+      notes: StickyNote[];
+      connectors?: Connector[];
+      frames?: Frame[];
+      users: Record<string, { name: string; color: string }>;
+    }) => {
+      // Clear existing
+      for (const el of board.querySelectorAll(".sticky-note")) el.remove();
+      for (const el of connectorLayer.querySelectorAll("[data-connector-id]")) el.remove();
+      for (const el of frameLayer.querySelectorAll(".frame-element")) el.remove();
+      notes.clear();
+      connectors.clear();
+      frames.clear();
+      selectedNoteIds.clear();
 
-    for (const note of data.notes) {
-      notes.set(note.id, note);
-      renderNote(note);
-    }
-    for (const f of data.frames || []) {
-      frames.set(f.id, f);
-      renderFrame(f);
-    }
-    for (const c of data.connectors || []) {
-      connectors.set(c.id, c);
-      renderConnector(c);
-    }
+      for (const note of data.notes) {
+        notes.set(note.id, note);
+        renderNote(note);
+      }
+      for (const f of data.frames || []) {
+        frames.set(f.id, f);
+        renderFrame(f);
+      }
+      for (const c of data.connectors || []) {
+        connectors.set(c.id, c);
+        renderConnector(c);
+      }
 
-    // Reset existing user badges then re-render
-    userBadges.forEach((badge) => badge.remove());
-    userBadges.clear();
-    for (const [id, user] of Object.entries(data.users)) {
-      addUserBadge(id, user.name, user.color);
-    }
-  });
+      // Reset existing user badges then re-render
+      for (const badge of userBadges.values()) badge.remove();
+      userBadges.clear();
+      for (const [id, user] of Object.entries(data.users)) {
+        addUserBadge(id, user.name, user.color);
+      }
+    },
+  );
 
   socket.on("note:created", (note: StickyNote) => {
     notes.set(note.id, note);
