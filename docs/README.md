@@ -183,7 +183,7 @@ URL パスがボード ID になる。
 ツールバーの **Export MD** でボードの全状態を Markdown ファイルとしてダウンロードできる。
 **Import MD** で同形式のファイルを読み込み、ボードを完全に復元できる。
 
-出力ファイルには YAML front-matter・人間可読のサマリ・再インポート用のデータブロックが含まれる。
+出力ファイルには YAML front-matter・再インポート用のデータブロックが含まれる。
 詳細なフォーマット仕様は [DEVELOPMENT.md — Markdown 出力フォーマット仕様](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md#markdown-出力フォーマット仕様) を参照。
 
 ### インポート時の挙動
