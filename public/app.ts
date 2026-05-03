@@ -144,7 +144,14 @@ zoomResetBtn.addEventListener("click", () => {
 
 // --- Double-click to create note ---
 boardContainer.addEventListener("dblclick", (e) => {
-  if (e.target !== boardContainer && e.target !== board) return;
+  const target = e.target as Element | null;
+  if (!target) return;
+  if (
+    target.closest(
+      ".sticky-note, .frame-title, .frame-resize, .note-action-btn, .note-anchor, .color-picker-popup, .connector-line, .connector-menu",
+    )
+  )
+    return;
   const rect = boardContainer.getBoundingClientRect();
   const x = (e.clientX - rect.left - panX) / scale;
   const y = (e.clientY - rect.top - panY) / scale;
