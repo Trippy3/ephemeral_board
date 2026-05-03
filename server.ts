@@ -6,7 +6,16 @@ import { Server } from "socket.io";
 import { exportAsMarkdown } from "./export.js";
 import { parseMarkdownImport } from "./import.js";
 import { sanitizeNoteHtmlOnServer } from "./sanitize-server.js";
-import { type ConnectorStyle, FONT_SIZES, type StickyNote, type TextAlign } from "./shared.js";
+import {
+  ANCHOR_SIDES,
+  type AnchorSide,
+  CONNECTOR_SHAPES,
+  type ConnectorShape,
+  type ConnectorStyle,
+  FONT_SIZES,
+  type StickyNote,
+  type TextAlign,
+} from "./shared.js";
 import {
   assignUserColor,
   bringToFront,
@@ -27,6 +36,7 @@ import {
   resizeNote,
   restoreNote,
   startCleanup,
+  updateConnector,
   updateFrame,
 } from "./state.js";
 
@@ -240,9 +250,20 @@ io.on("connection", (socket) => {
 
   socket.on(
     "connector:create",
-    (data: { fromNoteId: string; toNoteId: string; style: ConnectorStyle; color: string }) => {
+    (data: {
+      fromNoteId: string;
+      toNoteId: string;
+      fromSide: AnchorSide;
+      toSide: AnchorSide;
+      shape?: ConnectorShape;
+      style: ConnectorStyle;
+      color: string;
+    }) => {
       if (!currentBoard) return;
-      const connector = createConnector(currentBoard, data);
+      if (!ANCHOR_SIDES.includes(data.fromSide) || !ANCHOR_SIDES.includes(data.toSide)) return;
+      const allowedShape =
+        data.shape !== undefined && CONNECTOR_SHAPES.includes(data.shape) ? data.shape : undefined;
+      const connector = createConnector(currentBoard, { ...data, shape: allowedShape });
       if (connector) {
         io.to(currentBoard).emit("connector:created", connector);
       }
@@ -255,6 +276,31 @@ io.on("connection", (socket) => {
       io.to(currentBoard).emit("connector:deleted", { id: data.id });
     }
   });
+
+  socket.on(
+    "connector:update",
+    (data: { id: string; style?: ConnectorStyle; shape?: ConnectorShape; color?: string }) => {
+      if (!currentBoard) return;
+      const allowedStyle = data.style === "arrow" || data.style === "line" ? data.style : undefined;
+      const allowedShape =
+        data.shape !== undefined && CONNECTOR_SHAPES.includes(data.shape) ? data.shape : undefined;
+      const allowedColor =
+        typeof data.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(data.color)
+          ? data.color
+          : undefined;
+      if (allowedStyle === undefined && allowedShape === undefined && allowedColor === undefined) {
+        return;
+      }
+      const updated = updateConnector(currentBoard, data.id, {
+        style: allowedStyle,
+        shape: allowedShape,
+        color: allowedColor,
+      });
+      if (updated) {
+        io.to(currentBoard).emit("connector:updated", updated);
+      }
+    },
+  );
 
   socket.on(
     "frame:create",

@@ -2,6 +2,11 @@ export const SCHEMA_VERSION = 2;
 
 export type TextAlign = "left" | "center" | "right";
 export type ConnectorStyle = "arrow" | "line";
+export type ConnectorShape = "straight" | "elbow" | "curved";
+export const CONNECTOR_SHAPES: readonly ConnectorShape[] = ["straight", "elbow", "curved"];
+export const DEFAULT_CONNECTOR_SHAPE: ConnectorShape = "straight";
+export type AnchorSide = "top" | "right" | "bottom" | "left";
+export const ANCHOR_SIDES: readonly AnchorSide[] = ["top", "right", "bottom", "left"];
 
 export interface StickyNote {
   id: string;
@@ -23,6 +28,11 @@ export interface Connector {
   id: string;
   fromNoteId: string;
   toNoteId: string;
+  /** Edge of the source note where the line starts. */
+  fromSide: AnchorSide;
+  /** Edge of the target note where the line ends. */
+  toSide: AnchorSide;
+  shape: ConnectorShape;
   style: ConnectorStyle;
   color: string;
   createdAt: number;

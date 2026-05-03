@@ -2,9 +2,12 @@ import yaml from "js-yaml";
 import { z } from "zod";
 import { sanitizeNoteHtmlOnServer } from "./sanitize-server.js";
 import {
+  type AnchorSide,
   type Connector,
+  type ConnectorShape,
   type ConnectorStyle,
   DEFAULT_ALIGN,
+  DEFAULT_CONNECTOR_SHAPE,
   DEFAULT_FONT_SIZE,
   type Frame,
   type StickyNote,
@@ -40,11 +43,20 @@ const noteSchema = z.object({
   text: z.string().max(16_000).default(""),
 });
 
+const sideSchema = z.enum(["top", "right", "bottom", "left"]);
+const shapeSchema = z.enum(["straight", "elbow", "curved"]);
+
 const connectorSchema = z.object({
   id: z.string().min(1).max(64),
   type: z.literal("connector"),
   from: z.string().min(1).max(64),
   to: z.string().min(1).max(64),
+  fromSide: sideSchema.optional(),
+  toSide: sideSchema.optional(),
+  // Snake-case aliases (legacy human-edited files)
+  from_side: sideSchema.optional(),
+  to_side: sideSchema.optional(),
+  shape: shapeSchema.optional(),
   style: z.enum(["arrow", "line"]),
   color: z.string().regex(/^#[0-9a-fA-F]{3,8}$/),
   createdAt: isoToMs.optional(),
@@ -131,11 +143,15 @@ export function parseMarkdownImport(markdown: string): ImportResult {
         id: v.id,
         fromNoteId: v.from,
         toNoteId: v.to,
+        // Sides may be absent in pre-edge-anchor exports; filled in below.
+        fromSide: (v.fromSide ?? v.from_side) as AnchorSide | undefined,
+        toSide: (v.toSide ?? v.to_side) as AnchorSide | undefined,
+        shape: (v.shape ?? DEFAULT_CONNECTOR_SHAPE) as ConnectorShape,
         style: v.style as ConnectorStyle,
         color: v.color,
         createdAt: v.createdAt ?? now,
         updatedAt: v.updatedAt ?? now,
-      });
+      } as Connector & { fromSide?: AnchorSide; toSide?: AnchorSide });
     } else if (kind === "frame") {
       const result = frameSchema.safeParse(parsed);
       if (!result.success) {
@@ -162,5 +178,43 @@ export function parseMarkdownImport(markdown: string): ImportResult {
     (c) => noteIds.has(c.fromNoteId) && noteIds.has(c.toNoteId),
   );
 
+  // Fill in sides for legacy connectors that didn't store them.
+  const noteById = new Map(notes.map((n) => [n.id, n]));
+  for (const c of filteredConnectors) {
+    if (!c.fromSide || !c.toSide) {
+      const a = noteById.get(c.fromNoteId);
+      const b = noteById.get(c.toNoteId);
+      if (a && b) {
+        const sides = closestSidesBetween(a, b);
+        c.fromSide = c.fromSide ?? sides.fromSide;
+        c.toSide = c.toSide ?? sides.toSide;
+      } else {
+        c.fromSide = c.fromSide ?? "right";
+        c.toSide = c.toSide ?? "left";
+      }
+    }
+  }
+
   return { notes, connectors: filteredConnectors, frames };
+}
+
+function closestSidesBetween(
+  a: StickyNote,
+  b: StickyNote,
+): { fromSide: AnchorSide; toSide: AnchorSide } {
+  const ax = a.x + a.width / 2;
+  const ay = a.y + a.height / 2;
+  const bx = b.x + b.width / 2;
+  const by = b.y + b.height / 2;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const fromSide: AnchorSide =
+    Math.abs(dx) > Math.abs(dy) ? (dx >= 0 ? "right" : "left") : dy >= 0 ? "bottom" : "top";
+  const opposite: Record<AnchorSide, AnchorSide> = {
+    top: "bottom",
+    bottom: "top",
+    left: "right",
+    right: "left",
+  };
+  return { fromSide, toSide: opposite[fromSide] };
 }

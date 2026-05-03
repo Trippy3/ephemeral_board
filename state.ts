@@ -1,9 +1,12 @@
 import { nanoid } from "nanoid";
 import {
+  type AnchorSide,
   type BoardSnapshot,
   type Connector,
+  type ConnectorShape,
   type ConnectorStyle,
   DEFAULT_ALIGN,
+  DEFAULT_CONNECTOR_SHAPE,
   DEFAULT_FONT_SIZE,
   type Frame,
   SCHEMA_VERSION,
@@ -44,24 +47,42 @@ export function assignUserColor(): string {
   return color;
 }
 
-const GUIDE_NOTES: { text: string; color: string }[] = [
+// Per-note width/height tuned so the default content fits without scrollbars.
+// Heights account for Japanese line wrap at 14px font + ~28px header + ~14px padding.
+const GUIDE_NOTES: { text: string; color: string; width: number; height: number }[] = [
   {
     color: "#93c5fd",
-    text: "📌 付箋の基本操作\n\nダブルクリック → 付箋を作成\nドラッグ → 移動\nクリック → テキスト編集\n右下角ドラッグ → リサイズ",
+    width: 280,
+    height: 270,
+    text: "📌 付箋の基本操作\n\n空白をダブルクリック → 付箋を作成\n付箋をドラッグ → 移動\n付箋をクリック → テキスト編集\n右下角をドラッグ → リサイズ\nShift+クリック → 複数選択に追加",
   },
   {
     color: "#86efac",
-    text: "🎨 色と書式\n\nツールバーで色を選んでから作成\n🎨 ボタン → 色を変更\nB / 整列 / サイズで書式変更",
+    width: 280,
+    height: 250,
+    text: "🎨 色と書式\n\nツールバーで色を選んでから作成\n🎨 ボタン → 色を変更\nB / 整列 / A−A+ で書式変更\n黒付箋は文字色が自動で白になります",
   },
   {
     color: "#fef08a",
-    text: "🔍 ボード操作\n\nマウスホイール → ズーム\n空白をドラッグ → パン\n空白で矩形ドラッグ → 複数選択\nDelete → 削除 / Ctrl+Z → 取り消し",
+    width: 290,
+    height: 290,
+    text: "🖱 ボード操作\n\n右クリック+ドラッグ → パン\n中クリック+ドラッグ → パン\nSpace+左ドラッグ → パン\n空白を左ドラッグ → 矩形選択\nShift+左ドラッグ → 追加で矩形選択\nマウスホイール → ズーム",
+  },
+  {
+    color: "#fdba74",
+    width: 320,
+    height: 300,
+    text: "🔗 矢印・フレーム\n\n付箋にホバー → 四辺に青い●\n● からドラッグ中は全付箋の●が表示される\n別付箋の●にドロップ → アンカー同士を接続\nコネクタクリック → 形状 (━ ⌐ ⌒) / 矢印 (→ —) / 削除 (✕)\n⬜ ボタン (or F) → フレーム描画モード",
   },
   {
     color: "#c4b5fd",
-    text: "👥 共同編集 & MD\n\n同じURLを共有するだけ\nExport MD → 状態を保存\nImport MD → 状態を復元\n\nこのガイド付箋は不要なら削除してOK",
+    width: 340,
+    height: 340,
+    text: "👥 共同編集 & MD\n\n同じURLを共有するだけ\nDelete → 選択を削除 / Ctrl+Z → 取り消し\nCtrl+C / Ctrl+V → 付箋をコピー & 貼り付け\nExport MD → 状態を保存 / Import MD → 復元\n\nこのガイド付箋は不要なら削除してOK",
   },
 ];
+
+const GUIDE_NOTE_GAP = 20;
 
 let maxZIndex = 0;
 
@@ -77,16 +98,16 @@ export function getOrCreateBoard(boardId: string): BoardState {
       createdAt: now,
       lastActivityAt: now,
     };
-    for (let i = 0; i < GUIDE_NOTES.length; i++) {
-      const guide = GUIDE_NOTES[i];
+    let cursorX = 80;
+    for (const guide of GUIDE_NOTES) {
       maxZIndex++;
       const note: StickyNote = {
         id: nanoid(10),
         text: guide.text,
-        x: 80 + i * 250,
+        x: cursorX,
         y: 80,
-        width: 230,
-        height: 230,
+        width: guide.width,
+        height: guide.height,
         color: guide.color,
         createdBy: "System",
         createdAt: now,
@@ -96,6 +117,7 @@ export function getOrCreateBoard(boardId: string): BoardState {
         align: DEFAULT_ALIGN,
       };
       board.notes.set(note.id, note);
+      cursorX += guide.width + GUIDE_NOTE_GAP;
     }
     boards.set(boardId, board);
   }
@@ -302,7 +324,15 @@ export function resizeNote(
 
 export function createConnector(
   boardId: string,
-  data: { fromNoteId: string; toNoteId: string; style: ConnectorStyle; color: string },
+  data: {
+    fromNoteId: string;
+    toNoteId: string;
+    fromSide: AnchorSide;
+    toSide: AnchorSide;
+    shape?: ConnectorShape;
+    style: ConnectorStyle;
+    color: string;
+  },
 ): Connector | null {
   const board = getOrCreateBoard(boardId);
   if (!board.notes.has(data.fromNoteId) || !board.notes.has(data.toNoteId)) {
@@ -314,6 +344,9 @@ export function createConnector(
     id: nanoid(10),
     fromNoteId: data.fromNoteId,
     toNoteId: data.toNoteId,
+    fromSide: data.fromSide,
+    toSide: data.toSide,
+    shape: data.shape ?? DEFAULT_CONNECTOR_SHAPE,
     style: data.style,
     color: data.color,
     createdAt: now,
@@ -330,6 +363,23 @@ export function deleteConnector(boardId: string, connectorId: string): boolean {
   const deleted = board.connectors.delete(connectorId);
   if (deleted) board.lastActivityAt = Date.now();
   return deleted;
+}
+
+export function updateConnector(
+  boardId: string,
+  connectorId: string,
+  changes: { style?: ConnectorStyle; shape?: ConnectorShape; color?: string },
+): Connector | null {
+  const board = boards.get(boardId);
+  if (!board) return null;
+  const connector = board.connectors.get(connectorId);
+  if (!connector) return null;
+  if (changes.style !== undefined) connector.style = changes.style;
+  if (changes.shape !== undefined) connector.shape = changes.shape;
+  if (changes.color !== undefined) connector.color = changes.color;
+  connector.updatedAt = Date.now();
+  board.lastActivityAt = connector.updatedAt;
+  return connector;
 }
 
 // --- Frame CRUD ---

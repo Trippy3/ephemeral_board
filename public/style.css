@@ -51,6 +51,7 @@ body {
   height: 24px;
   border-radius: 50%;
   border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s;
 }
@@ -63,7 +64,12 @@ body {
   border-color: #333;
 }
 
-#export-btn, #zoom-in-btn, #zoom-out-btn, #zoom-reset-btn {
+/* White palette button: stronger outline so it's distinguishable from the white toolbar */
+.color-btn[data-color="#ffffff"] {
+  box-shadow: inset 0 0 0 1px #9ca3af;
+}
+
+#import-btn, #export-btn, #zoom-in-btn, #zoom-out-btn, #zoom-reset-btn {
   padding: 6px 12px;
   border: 1px solid #ddd;
   border-radius: 6px;
@@ -74,7 +80,7 @@ body {
   transition: background 0.15s;
 }
 
-#export-btn:hover, #zoom-in-btn:hover, #zoom-out-btn:hover, #zoom-reset-btn:hover {
+#import-btn:hover, #export-btn:hover, #zoom-in-btn:hover, #zoom-out-btn:hover, #zoom-reset-btn:hover {
   background: #f5f5f5;
 }
 
@@ -147,6 +153,7 @@ body {
 }
 
 .sticky-note .note-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -154,6 +161,7 @@ body {
   font-size: 11px;
   color: rgba(0,0,0,0.4);
   cursor: grab;
+  min-height: 22px;
 }
 
 .sticky-note .note-header .note-author {
@@ -163,14 +171,19 @@ body {
   max-width: 120px;
 }
 
+/* Actions overlay the top-right corner so they never push content down on hover */
 .sticky-note .note-actions {
+  position: absolute;
+  top: 3px;
+  right: 4px;
   display: flex;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
   flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: 70%;
+  max-width: calc(100% - 16px);
+  z-index: 1;
 }
 
 .sticky-note:hover .note-actions {
@@ -400,9 +413,16 @@ body {
 }
 
 /* Body cursor while in special modes */
-body.mode-connect #board-container,
 body.mode-frame #board-container {
   cursor: crosshair;
+}
+
+/* Hold Space to enter hand-pan mode */
+#board-container.space-pan {
+  cursor: grab;
+}
+#board-container.space-pan.grabbing {
+  cursor: grabbing;
 }
 
 /* SVG connector layer */
@@ -427,12 +447,124 @@ body.mode-frame #board-container {
   stroke-width: 4;
 }
 
-/* Selected note outline (for connect-mode pick / multi-select) */
-.sticky-note.selected,
-.sticky-note.connect-source {
+/* Connector being drawn from an edge anchor */
+#connector-layer .connector-draft {
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Connector context menu (shape / style / delete) */
+.connector-menu {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  z-index: 9999;
+}
+
+.connector-menu-group {
+  display: flex;
+  gap: 2px;
+  padding-right: 8px;
+  border-right: 1px solid #e5e7eb;
+}
+.connector-menu-group:last-of-type {
+  padding-right: 0;
+  border-right: none;
+}
+
+.connector-menu-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.connector-menu-btn:hover {
+  background: #f3f4f6;
+}
+
+.connector-menu-btn.active {
+  background: #3b82f6;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.connector-menu-btn.connector-menu-delete:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+/* Selected note outline (multi-select) */
+.sticky-note.selected {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
 }
+
+/* Edge anchors (Miro-style) — appear on hover/select, drag to draw a connector */
+.note-anchor {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  opacity: 0;
+  cursor: crosshair;
+  transition: opacity 0.15s, transform 0.1s;
+  z-index: 2;
+  touch-action: none;
+}
+
+.sticky-note:hover .note-anchor,
+.sticky-note.selected .note-anchor {
+  opacity: 0.9;
+}
+
+/* While the user drags a connector, every note's anchors stay visible so the
+   user can target a specific drop side (Miro-style). */
+body.drawing-connector .note-anchor {
+  opacity: 0.9;
+}
+
+.note-anchor:hover {
+  opacity: 1 !important;
+  transform: scale(1.3);
+}
+
+/* Drop-target highlight while dragging a connector over another anchor */
+.note-anchor.drop-target {
+  opacity: 1 !important;
+  background: #16a34a;
+  border-color: #f0fdf4;
+  box-shadow: 0 0 0 4px rgba(34,197,94,0.35), 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.note-anchor-top    { top: -6px;    left: 50%;   transform: translateX(-50%); }
+.note-anchor-right  { top: 50%;     right: -6px; transform: translateY(-50%); }
+.note-anchor-bottom { bottom: -6px; left: 50%;   transform: translateX(-50%); }
+.note-anchor-left   { top: 50%;     left: -6px;  transform: translateY(-50%); }
+
+/* Hover scale needs to compose with the side translate */
+.note-anchor-top:hover    { transform: translateX(-50%) scale(1.3); }
+.note-anchor-right:hover  { transform: translateY(-50%) scale(1.3); }
+.note-anchor-bottom:hover { transform: translateX(-50%) scale(1.3); }
+.note-anchor-left:hover   { transform: translateY(-50%) scale(1.3); }
 
 /* Frame layer */
 #frame-layer {

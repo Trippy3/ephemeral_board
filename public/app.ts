@@ -1,6 +1,8 @@
 import { io, type Socket } from "socket.io-client";
 import {
+  type AnchorSide,
   type Connector,
+  type ConnectorShape,
   DEFAULT_ALIGN,
   DEFAULT_FONT_SIZE,
   FONT_SIZES,
@@ -9,6 +11,12 @@ import {
   type StickyNote,
   type TextAlign,
 } from "../shared.js";
+import {
+  anchorPoint,
+  attachNoteEdgeAnchors,
+  type InteractionDeps,
+  setupBoardInteractions,
+} from "./interaction.js";
 import { sanitizeNoteHtml } from "./sanitize.js";
 
 function throttle<T extends (...args: any[]) => void>(fn: T, ms: number): T {
@@ -34,9 +42,7 @@ const connectors = new Map<string, Connector>();
 const frames = new Map<string, Frame>();
 const cursors = new Map<string, HTMLElement>();
 const selectedNoteIds = new Set<string>();
-let connectMode = false;
 let frameMode = false;
-let connectSourceId: string | null = null;
 let clipboardNotes: StickyNote[] = [];
 type DeleteUndoEntry = { kind: "delete"; notes: StickyNote[] };
 const undoStack: DeleteUndoEntry[] = [];
@@ -59,7 +65,6 @@ const importConfirmBtn = document.getElementById("import-confirm")!;
 const zoomInBtn = document.getElementById("zoom-in-btn")!;
 const zoomOutBtn = document.getElementById("zoom-out-btn")!;
 const zoomResetBtn = document.getElementById("zoom-reset-btn")!;
-const connectModeBtn = document.getElementById("connect-mode-btn")!;
 const frameModeBtn = document.getElementById("frame-mode-btn")!;
 const connectorLayer = document.getElementById("connector-layer") as unknown as SVGSVGElement;
 const frameLayer = document.getElementById("frame-layer")!;
@@ -100,34 +105,6 @@ function updateTransform() {
   board.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
   zoomResetBtn.textContent = `${Math.round(scale * 100)}%`;
 }
-
-// Pan
-let isPanning = false;
-let panStartX = 0;
-let panStartY = 0;
-
-boardContainer.addEventListener("pointerdown", (e) => {
-  if (e.target !== boardContainer && e.target !== board) return;
-  isPanning = true;
-  panStartX = e.clientX - panX;
-  panStartY = e.clientY - panY;
-  boardContainer.classList.add("grabbing");
-  boardContainer.setPointerCapture(e.pointerId);
-});
-
-boardContainer.addEventListener("pointermove", (e) => {
-  if (!isPanning) return;
-  panX = e.clientX - panStartX;
-  panY = e.clientY - panStartY;
-  updateTransform();
-});
-
-boardContainer.addEventListener("pointerup", () => {
-  if (isPanning) {
-    isPanning = false;
-    boardContainer.classList.remove("grabbing");
-  }
-});
 
 // Zoom
 boardContainer.addEventListener(
@@ -355,6 +332,9 @@ function renderNote(note: StickyNote): HTMLElement {
 
   el.append(header, text, resizeHandle);
 
+  // Edge anchors (Miro-style): drag from any side handle to draw a connector to another note.
+  attachNoteEdgeAnchors(el, note.id, interactionDeps);
+
   // Drag from header or note background (not text)
   setupDrag(el, note.id, el);
 
@@ -370,21 +350,16 @@ function setupDrag(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
   let groupOrigPositions: Map<string, { x: number; y: number }> = new Map();
 
   handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (
       target.classList.contains("note-text") ||
       target.classList.contains("note-action-btn") ||
       target.classList.contains("resize-handle") ||
+      target.classList.contains("note-anchor") ||
       target.contentEditable === "true"
     )
       return;
-
-    // Connect mode: clicking picks source/target instead of dragging
-    if (connectMode) {
-      e.stopPropagation();
-      handleNoteClickForConnect(noteId, noteEl);
-      return;
-    }
 
     e.stopPropagation();
 
@@ -540,6 +515,110 @@ function showColorPicker(noteId: string, noteEl: HTMLElement) {
   setTimeout(() => document.addEventListener("pointerdown", close), 0);
 }
 
+// --- Connector context menu ---
+let activeConnectorMenuCleanup: (() => void) | null = null;
+
+function showConnectorMenu(connectorId: string, clientX: number, clientY: number): void {
+  if (activeConnectorMenuCleanup) {
+    activeConnectorMenuCleanup();
+    activeConnectorMenuCleanup = null;
+  }
+  const connector = connectors.get(connectorId);
+  if (!connector) return;
+
+  const popup = document.createElement("div");
+  popup.className = "connector-menu";
+
+  function makeBtn(
+    label: string,
+    title: string,
+    onClick: () => void,
+    active = false,
+  ): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.className = "connector-menu-btn";
+    b.textContent = label;
+    b.title = title;
+    if (active) b.classList.add("active");
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+      cleanup();
+    });
+    return b;
+  }
+
+  const shapeGroup = document.createElement("div");
+  shapeGroup.className = "connector-menu-group";
+  shapeGroup.append(
+    makeBtn(
+      "━",
+      "直線",
+      () => socket.emit("connector:update", { id: connectorId, shape: "straight" }),
+      connector.shape === "straight",
+    ),
+    makeBtn(
+      "⌐",
+      "カクカク",
+      () => socket.emit("connector:update", { id: connectorId, shape: "elbow" }),
+      connector.shape === "elbow",
+    ),
+    makeBtn(
+      "⌒",
+      "弧",
+      () => socket.emit("connector:update", { id: connectorId, shape: "curved" }),
+      connector.shape === "curved",
+    ),
+  );
+
+  const styleGroup = document.createElement("div");
+  styleGroup.className = "connector-menu-group";
+  styleGroup.append(
+    makeBtn(
+      "→",
+      "矢印",
+      () => socket.emit("connector:update", { id: connectorId, style: "arrow" }),
+      connector.style === "arrow",
+    ),
+    makeBtn(
+      "—",
+      "線 (矢印なし)",
+      () => socket.emit("connector:update", { id: connectorId, style: "line" }),
+      connector.style === "line",
+    ),
+  );
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "connector-menu-btn connector-menu-delete";
+  deleteBtn.textContent = "✕";
+  deleteBtn.title = "削除";
+  deleteBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    socket.emit("connector:delete", { id: connectorId });
+    cleanup();
+  });
+
+  popup.append(shapeGroup, styleGroup, deleteBtn);
+
+  // Position relative to viewport (popup is fixed so it doesn't transform with the board).
+  popup.style.left = `${clientX}px`;
+  popup.style.top = `${clientY + 8}px`;
+  document.body.appendChild(popup);
+
+  const close = (e: Event) => {
+    if (!popup.contains(e.target as Node)) cleanup();
+  };
+
+  function cleanup() {
+    popup.remove();
+    document.removeEventListener("pointerdown", close);
+    activeConnectorMenuCleanup = null;
+  }
+
+  activeConnectorMenuCleanup = cleanup;
+  setTimeout(() => document.addEventListener("pointerdown", close), 0);
+}
+
 // --- Cursor tracking ---
 const throttledCursorEmit = throttle((x: number, y: number) => {
   socket.emit("cursor:move", { x, y });
@@ -599,66 +678,125 @@ function removeUserBadge(id: string) {
 }
 
 // --- Mode toggle ---
-function setConnectMode(on: boolean): void {
-  connectMode = on;
-  connectSourceId = null;
-  document.body.classList.toggle("mode-connect", on);
-  connectModeBtn.classList.toggle("active", on);
-  if (on) setFrameMode(false);
-  for (const n of document.querySelectorAll(".sticky-note.connect-source")) {
-    n.classList.remove("connect-source");
-  }
-}
-
 function setFrameMode(on: boolean): void {
   frameMode = on;
   document.body.classList.toggle("mode-frame", on);
   frameModeBtn.classList.toggle("active", on);
-  if (on) setConnectMode(false);
 }
 
-connectModeBtn.addEventListener("click", () => setConnectMode(!connectMode));
 frameModeBtn.addEventListener("click", () => setFrameMode(!frameMode));
 
 // --- Connector rendering ---
-function noteCenter(note: StickyNote): { cx: number; cy: number } {
-  return { cx: note.x + note.width / 2, cy: note.y + note.height / 2 };
+
+function sideNormal(side: AnchorSide): { dx: number; dy: number } {
+  switch (side) {
+    case "top":
+      return { dx: 0, dy: -1 };
+    case "right":
+      return { dx: 1, dy: 0 };
+    case "bottom":
+      return { dx: 0, dy: 1 };
+    case "left":
+      return { dx: -1, dy: 0 };
+  }
+}
+
+function buildElbowPath(
+  s: { x: number; y: number },
+  sSide: AnchorSide,
+  e: { x: number; y: number },
+  eSide: AnchorSide,
+): string {
+  const offset = 24;
+  const sNorm = sideNormal(sSide);
+  const eNorm = sideNormal(eSide);
+  const sExt = { x: s.x + sNorm.dx * offset, y: s.y + sNorm.dy * offset };
+  const eExt = { x: e.x + eNorm.dx * offset, y: e.y + eNorm.dy * offset };
+  const sHoriz = sSide === "left" || sSide === "right";
+  const eHoriz = eSide === "left" || eSide === "right";
+  const middle: { x: number; y: number }[] = [];
+  if (sHoriz && eHoriz) {
+    const midX = (sExt.x + eExt.x) / 2;
+    middle.push({ x: midX, y: sExt.y }, { x: midX, y: eExt.y });
+  } else if (!sHoriz && !eHoriz) {
+    const midY = (sExt.y + eExt.y) / 2;
+    middle.push({ x: sExt.x, y: midY }, { x: eExt.x, y: midY });
+  } else if (sHoriz) {
+    middle.push({ x: eExt.x, y: sExt.y });
+  } else {
+    middle.push({ x: sExt.x, y: eExt.y });
+  }
+  const pts = [s, sExt, ...middle, eExt, e];
+  return pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+}
+
+function buildCurvedPath(
+  s: { x: number; y: number },
+  sSide: AnchorSide,
+  e: { x: number; y: number },
+  eSide: AnchorSide,
+): string {
+  const dist = Math.hypot(e.x - s.x, e.y - s.y);
+  const offset = Math.max(40, dist * 0.4);
+  const sNorm = sideNormal(sSide);
+  const eNorm = sideNormal(eSide);
+  const cp1 = { x: s.x + sNorm.dx * offset, y: s.y + sNorm.dy * offset };
+  const cp2 = { x: e.x + eNorm.dx * offset, y: e.y + eNorm.dy * offset };
+  return `M ${s.x} ${s.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${e.x} ${e.y}`;
+}
+
+function buildConnectorPath(
+  shape: ConnectorShape,
+  start: { x: number; y: number },
+  startSide: AnchorSide,
+  end: { x: number; y: number },
+  endSide: AnchorSide,
+): string {
+  switch (shape) {
+    case "elbow":
+      return buildElbowPath(start, startSide, end, endSide);
+    case "curved":
+      return buildCurvedPath(start, startSide, end, endSide);
+    default:
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+  }
 }
 
 function renderConnector(connector: Connector): void {
-  let line = connectorLayer.querySelector(
+  let path = connectorLayer.querySelector(
     `[data-connector-id="${connector.id}"]`,
-  ) as SVGLineElement | null;
+  ) as SVGPathElement | null;
   const from = notes.get(connector.fromNoteId);
   const to = notes.get(connector.toNoteId);
   if (!from || !to) {
-    if (line) line.remove();
+    if (path) path.remove();
     return;
   }
-  const { cx: x1, cy: y1 } = noteCenter(from);
-  const { cx: x2, cy: y2 } = noteCenter(to);
-  if (!line) {
-    line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("data-connector-id", connector.id);
-    line.classList.add("connector-line");
-    line.addEventListener("click", (e) => {
+  // Anchor-to-anchor: the line goes from one specific edge midpoint to another,
+  // and follows those edges as the notes move (Miro-style edge anchor).
+  const start = anchorPoint(from, connector.fromSide);
+  const end = anchorPoint(to, connector.toSide);
+  const d = buildConnectorPath(connector.shape, start, connector.fromSide, end, connector.toSide);
+  if (!path) {
+    path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("data-connector-id", connector.id);
+    path.classList.add("connector-line");
+    // Stop pointerdown from bubbling into the board dispatcher (which would
+    // otherwise start a marquee selection and swallow the click).
+    path.addEventListener("pointerdown", (e) => e.stopPropagation());
+    path.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (confirm("このコネクタを削除しますか？")) {
-        socket.emit("connector:delete", { id: connector.id });
-      }
+      showConnectorMenu(connector.id, e.clientX, e.clientY);
     });
-    connectorLayer.appendChild(line);
+    connectorLayer.appendChild(path);
   }
-  line.setAttribute("x1", String(x1));
-  line.setAttribute("y1", String(y1));
-  line.setAttribute("x2", String(x2));
-  line.setAttribute("y2", String(y2));
-  line.setAttribute("stroke", connector.color);
-  (line as unknown as HTMLElement).style.color = connector.color;
+  path.setAttribute("d", d);
+  path.setAttribute("stroke", connector.color);
+  (path as unknown as HTMLElement).style.color = connector.color;
   if (connector.style === "arrow") {
-    line.setAttribute("marker-end", "url(#arrowhead)");
+    path.setAttribute("marker-end", "url(#arrowhead)");
   } else {
-    line.removeAttribute("marker-end");
+    path.removeAttribute("marker-end");
   }
 }
 
@@ -815,99 +953,7 @@ function setupFrameResize(handle: HTMLElement, el: HTMLElement, frameId: string)
   });
 }
 
-// --- Frame creation drag ---
-let frameDrawState: {
-  startX: number;
-  startY: number;
-  rectEl: HTMLElement;
-} | null = null;
-
-boardContainer.addEventListener("pointerdown", (e) => {
-  if (!frameMode) return;
-  if (e.target !== boardContainer && e.target !== board && e.target !== frameLayer) return;
-  const rect = boardContainer.getBoundingClientRect();
-  const startX = (e.clientX - rect.left - panX) / scale;
-  const startY = (e.clientY - rect.top - panY) / scale;
-  const rectEl = document.createElement("div");
-  rectEl.className = "frame-creating-rect";
-  rectEl.style.left = `${startX}px`;
-  rectEl.style.top = `${startY}px`;
-  rectEl.style.width = "0px";
-  rectEl.style.height = "0px";
-  board.appendChild(rectEl);
-  frameDrawState = { startX, startY, rectEl };
-  boardContainer.setPointerCapture(e.pointerId);
-  e.stopPropagation();
-});
-
-boardContainer.addEventListener("pointermove", (e) => {
-  if (!frameDrawState) return;
-  const rect = boardContainer.getBoundingClientRect();
-  const cx = (e.clientX - rect.left - panX) / scale;
-  const cy = (e.clientY - rect.top - panY) / scale;
-  const x = Math.min(frameDrawState.startX, cx);
-  const y = Math.min(frameDrawState.startY, cy);
-  const w = Math.abs(cx - frameDrawState.startX);
-  const h = Math.abs(cy - frameDrawState.startY);
-  frameDrawState.rectEl.style.left = `${x}px`;
-  frameDrawState.rectEl.style.top = `${y}px`;
-  frameDrawState.rectEl.style.width = `${w}px`;
-  frameDrawState.rectEl.style.height = `${h}px`;
-});
-
-boardContainer.addEventListener("pointerup", () => {
-  if (!frameDrawState) return;
-  const _r = frameDrawState.rectEl.getBoundingClientRect();
-  const x = parseFloat(frameDrawState.rectEl.style.left);
-  const y = parseFloat(frameDrawState.rectEl.style.top);
-  const w = parseFloat(frameDrawState.rectEl.style.width);
-  const h = parseFloat(frameDrawState.rectEl.style.height);
-  frameDrawState.rectEl.remove();
-  frameDrawState = null;
-  if (w > 20 && h > 20) {
-    socket.emit("frame:create", {
-      x,
-      y,
-      width: w,
-      height: h,
-      color: "#475569",
-      title: "Frame",
-    });
-  }
-  setFrameMode(false);
-});
-
-// --- Connector source/target picking ---
-function handleNoteClickForConnect(noteId: string, noteEl: HTMLElement): boolean {
-  if (!connectMode) return false;
-  if (connectSourceId === null) {
-    connectSourceId = noteId;
-    noteEl.classList.add("connect-source");
-    return true;
-  }
-  if (connectSourceId !== noteId) {
-    socket.emit("connector:create", {
-      fromNoteId: connectSourceId,
-      toNoteId: noteId,
-      style: "arrow",
-      color: "#475569",
-    });
-  }
-  for (const n of document.querySelectorAll(".sticky-note.connect-source")) {
-    n.classList.remove("connect-source");
-  }
-  connectSourceId = null;
-  setConnectMode(false);
-  return true;
-}
-
-// --- Multi-select rectangle ---
-let selectionDrawState: {
-  startX: number;
-  startY: number;
-  rectEl: HTMLElement;
-} | null = null;
-
+// --- Selection helpers ---
 function clearNoteSelection(): void {
   for (const id of selectedNoteIds) {
     document.getElementById(`note-${id}`)?.classList.remove("selected");
@@ -931,55 +977,26 @@ function toggleNoteSelection(noteId: string): void {
   }
 }
 
-boardContainer.addEventListener("pointerdown", (e) => {
-  if (frameMode || connectMode) return;
-  if (!e.shiftKey) return;
-  if (e.target !== boardContainer && e.target !== board) return;
-  e.stopPropagation();
-  const rect = boardContainer.getBoundingClientRect();
-  const startX = (e.clientX - rect.left - panX) / scale;
-  const startY = (e.clientY - rect.top - panY) / scale;
-  const rectEl = document.createElement("div");
-  rectEl.id = "selection-rect";
-  rectEl.style.left = `${startX}px`;
-  rectEl.style.top = `${startY}px`;
-  rectEl.style.width = "0";
-  rectEl.style.height = "0";
-  board.appendChild(rectEl);
-  selectionDrawState = { startX, startY, rectEl };
-  boardContainer.setPointerCapture(e.pointerId);
-});
-
-boardContainer.addEventListener("pointermove", (e) => {
-  if (!selectionDrawState) return;
-  const rect = boardContainer.getBoundingClientRect();
-  const cx = (e.clientX - rect.left - panX) / scale;
-  const cy = (e.clientY - rect.top - panY) / scale;
-  const x = Math.min(selectionDrawState.startX, cx);
-  const y = Math.min(selectionDrawState.startY, cy);
-  const w = Math.abs(cx - selectionDrawState.startX);
-  const h = Math.abs(cy - selectionDrawState.startY);
-  selectionDrawState.rectEl.style.left = `${x}px`;
-  selectionDrawState.rectEl.style.top = `${y}px`;
-  selectionDrawState.rectEl.style.width = `${w}px`;
-  selectionDrawState.rectEl.style.height = `${h}px`;
-});
-
-boardContainer.addEventListener("pointerup", () => {
-  if (!selectionDrawState) return;
-  const x1 = parseFloat(selectionDrawState.rectEl.style.left);
-  const y1 = parseFloat(selectionDrawState.rectEl.style.top);
-  const x2 = x1 + parseFloat(selectionDrawState.rectEl.style.width);
-  const y2 = y1 + parseFloat(selectionDrawState.rectEl.style.height);
-  selectionDrawState.rectEl.remove();
-  selectionDrawState = null;
-  clearNoteSelection();
-  for (const note of notes.values()) {
-    if (note.x + note.width >= x1 && note.x <= x2 && note.y + note.height >= y1 && note.y <= y2) {
-      selectNote(note.id, true);
-    }
-  }
-});
+// --- Wire the unified board-interaction dispatcher (pan / marquee / frame draw) ---
+const interactionDeps: InteractionDeps = {
+  board,
+  boardContainer,
+  connectorLayer,
+  frameLayer,
+  notes,
+  getTransform: () => ({ panX, panY, scale }),
+  setPan: (x, y) => {
+    panX = x;
+    panY = y;
+    updateTransform();
+  },
+  isFrameMode: () => frameMode,
+  setFrameMode,
+  getSocket: () => socket ?? null,
+  clearNoteSelection,
+  selectNote,
+};
+setupBoardInteractions(interactionDeps);
 
 // --- Keyboard shortcuts ---
 let lastMouseBoardX = 200;
@@ -1056,19 +1073,14 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Esc — exit modes / clear selection
+  // Esc — exit frame mode / clear selection
   if (e.key === "Escape") {
-    setConnectMode(false);
     setFrameMode(false);
     clearNoteSelection();
     return;
   }
 
-  // C / F shortcuts (mode toggles)
-  if (e.key.toLowerCase() === "c" && !e.ctrlKey && !e.metaKey) {
-    setConnectMode(!connectMode);
-    return;
-  }
+  // F shortcut: toggle frame draw mode
   if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
     setFrameMode(!frameMode);
     return;
@@ -1315,6 +1327,11 @@ function setupSocketListeners() {
   socket.on("connector:deleted", (data: { id: string }) => {
     connectors.delete(data.id);
     removeConnectorEl(data.id);
+  });
+
+  socket.on("connector:updated", (c: Connector) => {
+    connectors.set(c.id, c);
+    renderConnector(c);
   });
 
   socket.on("frame:created", (f: Frame) => {
