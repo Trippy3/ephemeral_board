@@ -92,21 +92,6 @@ notes: 12
 connectors: 4
 frames: 2
 ---
-## Summary
-
-### Yellow
-
-- アイデア: オンボーディングフロー改善
-- 競合の価格調査
-
-### Connections
-
-- アイデア: オンボーディング... → ロードマップ Q3
-
-### Frames
-
-- スプリント計画
-
 ## Data
 
 _Do not hand-edit blocks below if you intend to re-import._
@@ -153,8 +138,7 @@ updatedAt: '2026-05-02T09:00:00.000Z'
 \```
 ```
 
-- **Summary セクション**: 色別グルーピング・空間順ソート（上→下、左→右）。コネクタは「from → to」、フレームはタイトル一覧。
-- **Data セクション**: 全付箋・コネクタ・フレームを `\`\`\`yaml note|connector|frame` フェンスで機械読取可能な形で出力。位置・サイズ・色・書式・作成者・タイムスタンプを精密に保持。
+- **Data セクション**: 全付箋・コネクタ・フレームを `\`\`\`yaml note|connector|frame` フェンスで機械読取可能な形で出力。位置・サイズ・色・書式・作成者・タイムスタンプを精密に保持。MD は「インポートでのボード復元」と「AI 等による解析」のみを目的とし、人間向けの要約は持たない。
 
 エクスポート / インポートの実装は `export.ts` と `import.ts` を参照。スキーマ検証は Zod、HTML サニタイズはサーバー側で `sanitize-server.ts` を経由する二段防御。
 

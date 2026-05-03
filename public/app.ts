@@ -428,6 +428,7 @@ function setupResize(handle: HTMLElement, noteId: string, noteEl: HTMLElement) {
   let origH = 0;
 
   handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     resizing = true;
     startX = e.clientX;
@@ -871,6 +872,7 @@ function setupFrameDrag(el: HTMLElement, frameId: string): void {
   let origX = 0;
   let origY = 0;
   el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (
       target.classList.contains("frame-resize") ||
@@ -920,6 +922,7 @@ function setupFrameResize(handle: HTMLElement, el: HTMLElement, frameId: string)
   let origW = 0;
   let origH = 0;
   handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
     resizing = true;
     startX = e.clientX;
