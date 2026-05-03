@@ -3,7 +3,8 @@
 このファイルは Claude Code / Codex / Cursor / Zed などのコーディングエージェントが
 本リポジトリで作業を始める際に、最短で文脈を掴むためのガイドです。
 
-詳細はすべて [`docs/README.md`](./docs/README.md) を参照してください。
+詳細は [`docs/README.md`](./docs/README.md)（ユーザー向け）と
+[`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md)（開発者向け）を参照してください。
 本ファイルは「最初に必ず守るべきこと」のみを簡潔に記述します。
 
 ---
@@ -42,7 +43,9 @@
 │   ├── interaction.ts     # ボード入力ディスパッチャ (pan / marquee / frame draw / edge anchor)
 │   ├── sanitize.ts        # クライアント側 DOMPurify ラッパ
 │   └── style.css
-└── docs/README.md         # ユーザー向けドキュメント
+└── docs/
+    ├── README.md          # ユーザー向けドキュメント
+    └── DEVELOPMENT.md     # 開発者向けドキュメント
 ```
 
 主要なドメイン型は `shared.ts` で定義:
@@ -53,7 +56,8 @@
 - `BoardSnapshot` — 上記をまとめたエクスポート用構造
 - `SCHEMA_VERSION` — エクスポート Markdown のスキーマ番号 (現在 `2`)
 
-詳しい挙動・ショートカット一覧・設計判断は `docs/README.md` を参照。
+詳しい挙動・ショートカット一覧は `docs/README.md`、
+設計判断・アーキテクチャ・コード定数の変更手順は `docs/DEVELOPMENT.md` を参照。
 
 ---
 
