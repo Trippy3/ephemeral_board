@@ -1,7 +1,7 @@
-import { createServer } from "node:http";
+import { createServer, type Server as HttpServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import express from "express";
+import express, { type Express } from "express";
 import { Server } from "socket.io";
 import { exportAsMarkdown } from "./export.js";
 import { parseMarkdownImport } from "./import.js";
@@ -42,9 +42,9 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const app = express();
-const server = createServer(app);
-const io = new Server(server, {
+export const app: Express = express();
+export const server: HttpServer = createServer(app);
+export const io: Server = new Server(server, {
   cors: { origin: "*" },
 });
 
@@ -60,6 +60,12 @@ app.get("/api/boards/:boardId/export.md", (req, res) => {
   res.setHeader("Content-Type", "text/markdown; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="board-${req.params.boardId}.md"`);
   res.send(md);
+});
+
+// SPA fallback: any non-API GET path serves index.html so the client can
+// derive boardId from location.pathname (e.g. `/team-retro`).
+app.get(/^\/(?!api\/|socket\.io\/).*/, (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // Markdown import (replace board)

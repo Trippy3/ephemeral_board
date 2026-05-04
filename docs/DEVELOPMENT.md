@@ -54,8 +54,11 @@ ephemeral_board/
 | `pnpm lint` | Biome で Lint チェック |
 | `pnpm format` | Biome で Format 自動修正 |
 | `pnpm check` | Biome で Lint + Format を自動修正 |
-| `pnpm check:ci` | Biome で Lint + Format をチェックのみ（CI 用、書き換えなし） |
-| `pnpm exec tsc --noEmit` | TypeScript の型チェック |
+| `pnpm check:ci` | CI ゲート: `biome check . && tsc --noEmit && vitest run` を順に実行 |
+| `pnpm test` | Vitest を watch モードで起動 |
+| `pnpm test:run` | Vitest を一発実行（unit + integration） |
+| `pnpm test:e2e` | Playwright で E2E を実行（chromium のみ。`pnpm exec playwright install chromium` が前提） |
+| `pnpm exec tsc --noEmit` | TypeScript の型チェック単体 |
 
 ### コミット前のチェックフロー
 
@@ -63,12 +66,41 @@ ephemeral_board/
 
 ```bash
 pnpm check       # Lint / Format を自動修正
-pnpm exec tsc --noEmit   # 型エラーがないか確認
+pnpm check:ci    # biome + tsc + vitest を順に実行
 pnpm build       # クライアントが本番ビルドできるか確認
 ```
 
-CI 相当のチェックだけ走らせたい場合は `pnpm check:ci` を使う（自動書き換えなし）。
-Biome の設定は `biome.json`、TypeScript の設定は `tsconfig.json` を参照。
+`pnpm check:ci` は自動書き換えなしで `biome check . && tsc --noEmit && vitest run` を直列実行する。
+Biome の設定は `biome.json`、TypeScript の設定は `tsconfig.json`、テストランナーは `vitest.config.ts` を参照。
+
+### テスト戦略
+
+自動テストは 3 層構成で、カバレッジ率は KPI にせず「壊れたら一番痛い動作」が回帰した時に必ず失敗することを目的にしている。
+
+| 層 | 場所 | ねらい |
+|----|------|--------|
+| Unit (Pure) | `tests/unit/` | `export.ts` / `import.ts` / `sanitize-*.ts` / `state.ts` の純粋ロジック・`anchorPoint` などジオメトリ |
+| Integration (Medium) | `tests/integration/` | `state.ts` の振る舞い契約 (cascade / replaceBoard / LWW)、Markdown ラウンドトリップ、HTTP API、Socket.IO 同期 |
+| E2E | `tests/e2e/` (任意) | 2 タブ同期 / MD 往復の UI 統合 / XSS 防御 / 黒付箋の文字色反転 |
+
+書くときの方針:
+
+- **Snapshot テストは禁止**。DOM・YAML 文字列の細部に依存して壊れる
+- **Socket.IO の transport をモックしない**。本物の `httpServer.listen(0)` でポートを開いて 2 クライアントを接続する (`tests/integration/socket-sync.test.ts` 参照)
+- **state.ts の private な Map を直接覗かない**。`getBoardSnapshot()` の戻り値で振る舞いを検証する
+- **同一テストファイル内の状態漏れを避ける**。各テストで `newBoardId()` のように一意なボード ID を使う
+- **DOMPurify を happy-dom 上でテストするときは `<script>` タグ入力を避ける**。happy-dom が script element を実行しようとして unhandled error になる。`<script>` 除去は `sanitize-server.ts` 側の regex テストで担保する
+
+「壊れたら一番痛い」項目とそれを担保するテストの対応:
+
+| 不変条件 | 担保するテスト |
+|---------|--------------|
+| Markdown ラウンドトリップ (ID 保持) | `tests/integration/markdown-roundtrip.test.ts` |
+| 付箋削除時のコネクタ cascade (`removedConnectorIds`) | `tests/integration/state-contract.test.ts` + `tests/integration/socket-sync.test.ts` |
+| LWW 同期 | `tests/integration/state-contract.test.ts` |
+| HTML サニタイズ (XSS) | `tests/unit/sanitize-server.test.ts` + `tests/unit/sanitize-client.test.ts` |
+| コネクタ edge anchor の幾何 | `tests/unit/connector-geometry.test.ts` |
+| HTTP エンドポイント (export / import) | `tests/integration/http.test.ts` |
 
 ### 主な依存パッケージ
 

@@ -82,9 +82,12 @@ pnpm dev      # サーバー + クライアントの watch ビルド
 
 | 目的 | コマンド |
 |------|----------|
-| Lint + Format チェックのみ | `pnpm check:ci` |
+| すべての CI ゲート (lint + 型 + テスト) | `pnpm check:ci` |
 | Lint + Format 自動修正 | `pnpm check` |
-| 型チェック | `pnpm exec tsc --noEmit` |
+| 型チェック単体 | `pnpm exec tsc --noEmit` |
+| 自動テスト (watch) | `pnpm test` |
+| 自動テスト (一発) | `pnpm test:run` |
+| E2E (Playwright, ローカル/CI) | `pnpm test:e2e` |
 | クライアント本番ビルド | `pnpm build` |
 | サーバー単体起動 (watch なし) | `pnpm start` |
 
@@ -94,15 +97,22 @@ Linter / Formatter は **Biome** (`biome.json`) を使用。
 **コードを変更したら、コミット前に必ず以下が通ることを確認してください:**
 
 ```bash
-pnpm check:ci && pnpm exec tsc --noEmit && pnpm build
+pnpm check:ci && pnpm build
 ```
+
+`pnpm check:ci` は内部で `biome check . && tsc --noEmit && vitest run` を順に実行します。
 
 ### 動作確認のポイント
 
-UI 機能を追加・変更したら、**ブラウザで実際に触って**確認してください
-(型チェックとビルドは挙動の正しさを保証しません)。
+機能追加・変更時は次のいずれかを必ず実施してください。
 
-特に確認すべき箇所:
+1. **対応する自動テストを足す / 既存テストを更新する**
+   - 純粋ロジック (`export.ts` / `import.ts` / `state.ts` / `sanitize-*.ts` / `interaction.ts` のジオメトリ) は `tests/unit/` に追加
+   - state の振る舞い契約 / HTTP / Socket.IO / Markdown ラウンドトリップは `tests/integration/` に追加
+   - テスト方針の詳細は `docs/DEVELOPMENT.md` の「テスト戦略」セクションを参照
+2. UI に閉じる挙動 (ドラッグ / レンダリング / ホバー UI) は **ブラウザで触って**確認
+
+特にテストと併せて目視確認すべき箇所:
 
 - 複数タブを開いてリアルタイム同期が壊れていないか
 - 付箋移動・コネクタ・フレーム・複数選択・コピペ・Undo (Ctrl+Z)

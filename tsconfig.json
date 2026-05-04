@@ -10,5 +10,5 @@
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["*.ts", "public/*.ts", "scripts/*.ts"]
+  "include": ["*.ts", "public/*.ts", "scripts/*.ts", "tests/**/*.ts"]
 }

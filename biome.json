@@ -12,7 +12,10 @@
       "!**/node_modules",
       "!**/dist",
       "!public/app.js",
-      "!pnpm-lock.yaml"
+      "!pnpm-lock.yaml",
+      "!.claude",
+      "!test-results",
+      "!playwright-report"
     ]
   },
   "formatter": {
