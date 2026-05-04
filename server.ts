@@ -40,14 +40,13 @@ import {
   updateFrame,
 } from "./state.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
 });
-
-const PORT = parseInt(process.env.PORT || "3000", 10);
 
 app.use(express.static(path.join(__dirname, "public")));
 app.use(
@@ -368,8 +367,30 @@ io.on("connection", (socket) => {
   });
 });
 
-startCleanup();
+export interface StartServerResult {
+  port: number;
+  close: () => Promise<void>;
+}
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Ephemeral Board running at http://localhost:${PORT}`);
-});
+export async function startServer(options: { port?: number } = {}): Promise<StartServerResult> {
+  const port = options.port ?? Number.parseInt(process.env.PORT || "3000", 10);
+  startCleanup();
+  await new Promise<void>((resolve) => {
+    server.listen(port, "0.0.0.0", () => resolve());
+  });
+  return {
+    port,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        io.close();
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  };
+}
+
+const isEntry = process.argv[1] !== undefined && __filename === path.resolve(process.argv[1]);
+if (isEntry) {
+  startServer().then(({ port }) => {
+    console.log(`Ephemeral Board running at http://localhost:${port}`);
+  });
+}

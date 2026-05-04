@@ -29,6 +29,8 @@ ephemeral_board/
   export.ts             # Markdown エクスポートロジック
   import.ts             # Markdown インポートロジック (Zod 検証)
   sanitize-server.ts    # サーバー側 HTML サニタイズ (defense-in-depth)
+  scripts/
+    share.ts            # `pnpm share` 用: サーバー起動 + Cloudflare Tunnel 起動
   docs/
     README.md           # ユーザー向けドキュメント
     DEVELOPMENT.md      # このドキュメント
@@ -48,6 +50,7 @@ ephemeral_board/
 | `pnpm dev` | サーバー（tsx watch）+ クライアントビルド（esbuild watch）を同時起動 |
 | `pnpm build` | クライアント JS を minify ビルド |
 | `pnpm start` | サーバーのみ起動（ウォッチなし） |
+| `pnpm share` | `pnpm build` 後にサーバー + Cloudflare Tunnel を起動し公開 URL を表示 |
 | `pnpm lint` | Biome で Lint チェック |
 | `pnpm format` | Biome で Format 自動修正 |
 | `pnpm check` | Biome で Lint + Format を自動修正 |
@@ -76,6 +79,7 @@ Biome の設定は `biome.json`、TypeScript の設定は `tsconfig.json` を参
 | `dompurify` | クライアント側 HTML サニタイズ |
 | `js-yaml` | Markdown 内 YAML フェンスのシリアライズ / パース |
 | `zod` | インポート時のスキーマ検証 |
+| `cloudflared` (devDep) | `pnpm share` の Quick Tunnel 起動・バイナリ管理 |
 
 ---
 
@@ -315,6 +319,7 @@ PORT=8080 pnpm dev
 - 無料で安定して利用可能
 - Cloudflare Access と連携すればトンネルに認証をかけられる
 - アプリ自体はトンネルツールに依存しないので ngrok 等でも動作する
+- `cloudflared` npm パッケージ経由でバイナリの DL からトンネル起動までを `scripts/share.ts` に統合できる（ユーザー側は `pnpm share` 一発）
 
 ---
 

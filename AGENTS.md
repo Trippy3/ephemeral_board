@@ -43,6 +43,8 @@
 │   ├── interaction.ts     # ボード入力ディスパッチャ (pan / marquee / frame draw / edge anchor)
 │   ├── sanitize.ts        # クライアント側 DOMPurify ラッパ
 │   └── style.css
+├── scripts/
+│   └── share.ts           # `pnpm share` 用: サーバー + Cloudflare Quick Tunnel 起動
 └── docs/
     ├── README.md          # ユーザー向けドキュメント
     └── DEVELOPMENT.md     # 開発者向けドキュメント
@@ -72,6 +74,9 @@ pnpm dev      # サーバー + クライアントの watch ビルド
 ```
 
 ポート変更は `PORT=8080 pnpm dev`。
+
+社内メンバーへ共有する一発コマンドは `pnpm share`
+（本番ビルド + サーバー + Cloudflare Quick Tunnel を統合起動。詳細は `scripts/share.ts` 参照）。
 
 ### 検証コマンド
 

@@ -33,14 +33,33 @@ pnpm dev
 
 ブラウザで http://localhost:3000 を開く。
 
-### 社内メンバーと共有する（cloudflared）
+### 社内メンバーと共有する（pnpm share）
 
 ```bash
-# 別ターミナルで実行
-cloudflared tunnel --url http://localhost:3000
+pnpm share
 ```
 
-表示されたトンネル URL を共有すれば、社内メンバーがブラウザからアクセスできる。
+これだけで以下が一気に立ち上がる:
+
+1. クライアントを本番ビルド（`pnpm build` 相当）
+2. サーバーを起動
+3. Cloudflare Tunnel を起動（初回のみ `cloudflared` バイナリを自動ダウンロード）
+4. `Local` URL と `Tunnel` URL（`*.trycloudflare.com`）をターミナルに表示
+
+URL を共有すれば社内メンバーがブラウザからアクセスできる。
+`Ctrl+C` でサーバーとトンネルを順にクリーンに停止する。
+
+> ⚠ **URL を知っていれば誰でもボードを閲覧・編集できる**。  
+> 機密情報をボードに置く運用では、Cloudflare Access などトンネル側の認証で保護すること。
+
+#### 手動で cloudflared を使いたい場合
+
+別ターミナルで（`cloudflared` を自前で導入済みであることが前提）:
+
+```bash
+pnpm dev   # or pnpm start
+cloudflared tunnel --url http://localhost:3000
+```
 
 ### 本番風に起動する（ウォッチなし）
 
