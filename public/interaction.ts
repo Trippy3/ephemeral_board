@@ -49,7 +49,16 @@ export interface InteractionDeps {
   getSocket(): Socket | null;
   clearNoteSelection(): void;
   selectNote(id: string, additive: boolean): void;
+  createNote(boardX: number, boardY: number): void;
 }
+
+type TouchPanMeta = {
+  startTime: number;
+  longPressTimer: ReturnType<typeof setTimeout> | null;
+  moved: boolean;
+  boardX: number;
+  boardY: number;
+};
 
 type Drag =
   | {
@@ -59,6 +68,7 @@ type Drag =
       startClientY: number;
       origPanX: number;
       origPanY: number;
+      tap?: TouchPanMeta;
     }
   | {
       kind: "marquee";
@@ -78,6 +88,34 @@ type Drag =
 
 let activeDrag: Drag | null = null;
 let isSpaceDown = false;
+
+const TAP_MOVE_THRESHOLD = 8;
+const LONG_PRESS_MS = 500;
+const DOUBLE_TAP_INTERVAL_MS = 300;
+const DOUBLE_TAP_DIST_PX = 30;
+
+const tapHistory = { time: 0, clientX: 0, clientY: 0 };
+
+/**
+ * Aborts whatever single-pointer drag (pan / marquee / frame draw) is in
+ * progress. Used by the pinch-zoom handler in app.ts when a second touch
+ * arrives — the multi-touch gesture takes over and this drag should stop
+ * acting on subsequent move events.
+ */
+export function cancelActiveDrag(boardContainer: HTMLElement): void {
+  if (!activeDrag) return;
+  const drag = activeDrag;
+  activeDrag = null;
+  if (drag.kind === "pan") {
+    if (drag.tap?.longPressTimer) {
+      clearTimeout(drag.tap.longPressTimer);
+      drag.tap.longPressTimer = null;
+    }
+    boardContainer.classList.remove("grabbing");
+  } else {
+    drag.rectEl.remove();
+  }
+}
 
 function isEditingText(): boolean {
   const active = document.activeElement;
@@ -175,7 +213,46 @@ export function setupBoardInteractions(deps: InteractionDeps): void {
       return;
     }
 
-    // Marquee selection. Shift = additive.
+    // Touch on empty area: 1-finger drag pans (no marquee on touch). The same
+    // gesture also drives long-press and double-tap note creation, handled in
+    // pointermove / finish below using the `tap` metadata.
+    if (e.pointerType === "touch") {
+      const tap: TouchPanMeta = {
+        startTime: Date.now(),
+        longPressTimer: null,
+        moved: false,
+        boardX: startBoardX,
+        boardY: startBoardY,
+      };
+      tap.longPressTimer = setTimeout(() => {
+        if (!activeDrag || activeDrag.kind !== "pan" || activeDrag.tap !== tap) return;
+        if (tap.moved) return;
+        tap.longPressTimer = null;
+        deps.createNote(tap.boardX, tap.boardY);
+        try {
+          boardContainer.releasePointerCapture(activeDrag.pointerId);
+        } catch {
+          // capture may already be lost; ignore
+        }
+        boardContainer.classList.remove("grabbing");
+        activeDrag = null;
+        tapHistory.time = 0;
+      }, LONG_PRESS_MS);
+      activeDrag = {
+        kind: "pan",
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        origPanX: t.panX,
+        origPanY: t.panY,
+        tap,
+      };
+      boardContainer.setPointerCapture(e.pointerId);
+      boardContainer.classList.add("grabbing");
+      return;
+    }
+
+    // Marquee selection. Shift = additive. (Mouse only — touch handled above.)
     const rectEl = document.createElement("div");
     rectEl.id = "selection-rect";
     rectEl.style.left = `${startBoardX}px`;
@@ -200,6 +277,14 @@ export function setupBoardInteractions(deps: InteractionDeps): void {
     if (activeDrag.kind === "pan") {
       const dx = e.clientX - activeDrag.startClientX;
       const dy = e.clientY - activeDrag.startClientY;
+      const tap = activeDrag.tap;
+      if (tap && !tap.moved && Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) {
+        tap.moved = true;
+        if (tap.longPressTimer) {
+          clearTimeout(tap.longPressTimer);
+          tap.longPressTimer = null;
+        }
+      }
       deps.setPan(activeDrag.origPanX + dx, activeDrag.origPanY + dy);
       return;
     }
@@ -225,6 +310,32 @@ export function setupBoardInteractions(deps: InteractionDeps): void {
 
     if (drag.kind === "pan") {
       boardContainer.classList.remove("grabbing");
+      const tap = drag.tap;
+      if (!tap) return;
+      if (tap.longPressTimer) {
+        clearTimeout(tap.longPressTimer);
+        tap.longPressTimer = null;
+      }
+      // pointercancel arrives without a clean tap; skip tap/double-tap logic.
+      if (e.type !== "pointerup") {
+        tapHistory.time = 0;
+        return;
+      }
+      if (tap.moved || Date.now() - tap.startTime >= LONG_PRESS_MS) return;
+      const now = Date.now();
+      const distFromLast = Math.hypot(
+        e.clientX - tapHistory.clientX,
+        e.clientY - tapHistory.clientY,
+      );
+      if (now - tapHistory.time < DOUBLE_TAP_INTERVAL_MS && distFromLast < DOUBLE_TAP_DIST_PX) {
+        deps.createNote(tap.boardX, tap.boardY);
+        tapHistory.time = 0;
+      } else {
+        deps.clearNoteSelection();
+        tapHistory.time = now;
+        tapHistory.clientX = e.clientX;
+        tapHistory.clientY = e.clientY;
+      }
       return;
     }
 

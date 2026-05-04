@@ -14,6 +14,7 @@ import {
 import {
   anchorPoint,
   attachNoteEdgeAnchors,
+  cancelActiveDrag,
   type InteractionDeps,
   setupBoardInteractions,
 } from "./interaction.js";
@@ -143,7 +144,19 @@ zoomResetBtn.addEventListener("click", () => {
 });
 
 // --- Double-click to create note ---
+// Touch double-tap is handled in interaction.ts; suppress the synthesized
+// dblclick that some browsers also dispatch on touch so we don't double-create.
+let lastBoardPointerType: PointerEvent["pointerType"] = "mouse";
+boardContainer.addEventListener(
+  "pointerdown",
+  (e) => {
+    lastBoardPointerType = e.pointerType;
+  },
+  true,
+);
+
 boardContainer.addEventListener("dblclick", (e) => {
+  if (lastBoardPointerType === "touch") return;
   const target = e.target as Element | null;
   if (!target) return;
   if (
@@ -1005,8 +1018,97 @@ const interactionDeps: InteractionDeps = {
   getSocket: () => socket ?? null,
   clearNoteSelection,
   selectNote,
+  createNote: (x, y) => {
+    socket?.emit("note:create", { x, y, color: selectedColor });
+  },
 };
 setupBoardInteractions(interactionDeps);
+
+// --- Touch: pinch-zoom + 2-finger pan ---
+// Single-finger drag is handled by interaction.ts as a "pan". When a second
+// finger arrives we cancel that single-pointer drag and take over with pinch.
+const activeTouches = new Map<number, { clientX: number; clientY: number }>();
+let pinchState: {
+  initialDist: number;
+  initialScale: number;
+  initialPanX: number;
+  initialPanY: number;
+  initialCenterX: number;
+  initialCenterY: number;
+} | null = null;
+
+function isToolbarTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest("#toolbar"));
+}
+
+boardContainer.addEventListener(
+  "pointerdown",
+  (e) => {
+    if (e.pointerType !== "touch") return;
+    if (isToolbarTarget(e.target)) return;
+    activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    if (activeTouches.size === 2) {
+      cancelActiveDrag(boardContainer);
+      // The pointerdown target is usually #board (a child of boardContainer),
+      // so capture-phase listeners on boardContainer fire before bubble-phase
+      // ones. Without stopPropagation, interaction.ts's bubble-phase pointerdown
+      // would see activeDrag === null (we just cleared it) and start a fresh
+      // single-pointer pan for this 2nd finger, racing with the pinch handler.
+      e.stopPropagation();
+      const pts = Array.from(activeTouches.values());
+      const dx = pts[1].clientX - pts[0].clientX;
+      const dy = pts[1].clientY - pts[0].clientY;
+      pinchState = {
+        initialDist: Math.max(1, Math.hypot(dx, dy)),
+        initialScale: scale,
+        initialPanX: panX,
+        initialPanY: panY,
+        initialCenterX: (pts[0].clientX + pts[1].clientX) / 2,
+        initialCenterY: (pts[0].clientY + pts[1].clientY) / 2,
+      };
+    }
+  },
+  true,
+);
+
+boardContainer.addEventListener(
+  "pointermove",
+  (e) => {
+    if (e.pointerType !== "touch") return;
+    if (!activeTouches.has(e.pointerId)) return;
+    activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    if (!pinchState || activeTouches.size !== 2) return;
+    e.preventDefault();
+    const pts = Array.from(activeTouches.values());
+    const dx = pts[1].clientX - pts[0].clientX;
+    const dy = pts[1].clientY - pts[0].clientY;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    const cx = (pts[0].clientX + pts[1].clientX) / 2;
+    const cy = (pts[0].clientY + pts[1].clientY) / 2;
+    const ratio = dist / pinchState.initialDist;
+    const newScale = Math.min(3, Math.max(0.2, pinchState.initialScale * ratio));
+    const rect = boardContainer.getBoundingClientRect();
+    const ax = pinchState.initialCenterX - rect.left;
+    const ay = pinchState.initialCenterY - rect.top;
+    const zoomRatio = newScale / pinchState.initialScale;
+    panX = ax - (ax - pinchState.initialPanX) * zoomRatio + (cx - pinchState.initialCenterX);
+    panY = ay - (ay - pinchState.initialPanY) * zoomRatio + (cy - pinchState.initialCenterY);
+    scale = newScale;
+    updateTransform();
+  },
+  true,
+);
+
+const endTouch = (e: PointerEvent) => {
+  if (e.pointerType !== "touch") return;
+  activeTouches.delete(e.pointerId);
+  if (activeTouches.size < 2) {
+    pinchState = null;
+  }
+};
+boardContainer.addEventListener("pointerup", endTouch, true);
+boardContainer.addEventListener("pointercancel", endTouch, true);
 
 // --- Keyboard shortcuts ---
 let lastMouseBoardX = 200;

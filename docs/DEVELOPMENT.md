@@ -264,6 +264,31 @@ PORT=8080 pnpm dev
 - 付箋移動・リサイズ時、`refreshConnectorsForNote(id)` が SVG `<line>` の x1/y1/x2/y2 属性を再計算
 - 付箋削除時、サーバーが `note:deleted.removedConnectorIds` を含めてブロードキャスト → クライアントは SVG line を除去
 
+### 入力モデル（マウスとタッチの分岐）
+
+ボードの入力は `interaction.ts` の `setupBoardInteractions()` に集約され、マウス/タッチ両方が PointerEvent ベースで処理される。`PointerEvent.pointerType` で挙動を分岐する設計のため、新たな全画面トグル（コネクタモード等）は追加しない。
+
+| ジェスチャ / 入力 | マウス | タッチ |
+|------------------|--------|--------|
+| パン | 右クリック+ドラッグ / 中クリック+ドラッグ / Space+左ドラッグ | **1 本指で空白をドラッグ** |
+| ズーム | wheel（カーソル中心） | **2 本指ピンチ**（中点中心、`app.ts` で実装） |
+| 矩形選択 | 左ドラッグ（空白） | （非対応：1 本指は pan 専用） |
+| 付箋作成 | dblclick（空白） | **空白を長押し** (~500ms) または **ダブルタップ** |
+| 単タップ on 空白 | （0 サイズ marquee → 選択解除） | 選択解除 + 次タップ用に時刻記録 |
+| 付箋選択 | クリック / Shift+クリック | タップ |
+| コネクタ作成 | edge anchor (●) からドラッグ | 同左（選択中の付箋に表示） |
+| フレーム描画 | F キー / ⬜ → 空白を左ドラッグ | ⬜ → 空白を 1 本指ドラッグ |
+
+ピンチハンドラは `app.ts` 末尾（`activeTouches` Map と `pinchState`）にあり、`pointerdown` を**capture phase**で受けて `activeTouches` に追加する。2 本目が触れたら `cancelActiveDrag(boardContainer)` で `interaction.ts` 側の進行中ドラッグを破棄してから `pinchState` を初期化する。
+
+タッチでの長押し / ダブルタップ判定は `interaction.ts` の `pointerdown` → `pointermove` → `finish` を貫く `tap: TouchPanMeta` 構造体で管理:
+
+- `pointerdown`: pan を開始しつつ `setTimeout(LONG_PRESS_MS)` を仕込む
+- `pointermove`: `TAP_MOVE_THRESHOLD` (8px) を超えたら `tap.moved = true` にして long-press timer を解除
+- `pointerup`（`finish`）: 動かず短時間で離されたら、モジュールレベルの `tapHistory` を見て直近タップとの距離・時間で**ダブルタップ判定** → `deps.createNote()`、そうでなければ `deps.clearNoteSelection()` で単タップ扱い
+
+CSS 側は `@media (hover: hover)` で hover 系スタイルを退避し、ホバー UI（アクションボタン / リサイズハンドル / edge anchor）は `.sticky-note.selected` でも表示されるようフォールバック化。`@media (pointer: coarse)` でタッチターゲット（anchor / 各ボタン / 色パレット）を拡大している。`#board-container` には `touch-action: none` を付与してブラウザのデフォルトジェスチャを抑制している。
+
 ---
 
 ## 技術的意思決定の背景

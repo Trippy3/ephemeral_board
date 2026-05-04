@@ -56,8 +56,10 @@ body {
   transition: border-color 0.15s, transform 0.15s;
 }
 
-.color-btn:hover {
-  transform: scale(1.2);
+@media (hover: hover) {
+  .color-btn:hover {
+    transform: scale(1.2);
+  }
 }
 
 .color-btn.active {
@@ -80,8 +82,10 @@ body {
   transition: background 0.15s;
 }
 
-#import-btn:hover, #export-btn:hover, #zoom-in-btn:hover, #zoom-out-btn:hover, #zoom-reset-btn:hover {
-  background: #f5f5f5;
+@media (hover: hover) {
+  #import-btn:hover, #export-btn:hover, #zoom-in-btn:hover, #zoom-out-btn:hover, #zoom-reset-btn:hover {
+    background: #f5f5f5;
+  }
 }
 
 #users-list {
@@ -115,6 +119,9 @@ body {
   background:
     radial-gradient(circle, #ddd 1px, transparent 1px);
   background-size: 24px 24px;
+  /* Touch: suppress browser-default scroll/zoom so our pan + pinch handlers run. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #board-container.grabbing {
@@ -142,8 +149,10 @@ body {
   touch-action: none;
 }
 
-.sticky-note:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.12);
+@media (hover: hover) {
+  .sticky-note:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.12);
+  }
 }
 
 .sticky-note.dragging {
@@ -186,7 +195,15 @@ body {
   z-index: 1;
 }
 
-.sticky-note:hover .note-actions {
+@media (hover: hover) {
+  .sticky-note:hover .note-actions {
+    opacity: 1;
+  }
+}
+
+/* On touch (and as a fallback any time the note is selected), reveal actions
+   without requiring hover. PC users still see them on hover via the rule above. */
+.sticky-note.selected .note-actions {
   opacity: 1;
 }
 
@@ -205,8 +222,10 @@ body {
   transition: background 0.1s;
 }
 
-.note-action-btn:hover {
-  background: rgba(0,0,0,0.15);
+@media (hover: hover) {
+  .note-action-btn:hover {
+    background: rgba(0,0,0,0.15);
+  }
 }
 
 .sticky-note .note-text {
@@ -246,8 +265,10 @@ body {
   color: rgba(255,255,255,0.7);
 }
 
-.sticky-note.dark .note-action-btn:hover {
-  background: rgba(255,255,255,0.22);
+@media (hover: hover) {
+  .sticky-note.dark .note-action-btn:hover {
+    background: rgba(255,255,255,0.22);
+  }
 }
 
 .sticky-note.dark .resize-handle::after {
@@ -272,7 +293,13 @@ body {
   transition: opacity 0.15s;
 }
 
-.sticky-note:hover .resize-handle {
+@media (hover: hover) {
+  .sticky-note:hover .resize-handle {
+    opacity: 0.3;
+  }
+}
+
+.sticky-note.selected .resize-handle {
   opacity: 0.3;
 }
 
@@ -386,8 +413,10 @@ body {
   transition: background 0.15s;
 }
 
-#name-submit:hover {
-  background: #2563eb;
+@media (hover: hover) {
+  #name-submit:hover {
+    background: #2563eb;
+  }
 }
 
 /* Mode buttons (connect / frame) */
@@ -402,8 +431,10 @@ body {
   transition: background 0.15s, border-color 0.15s;
 }
 
-.mode-btn:hover {
-  background: #f5f5f5;
+@media (hover: hover) {
+  .mode-btn:hover {
+    background: #f5f5f5;
+  }
 }
 
 .mode-btn.active {
@@ -443,8 +474,10 @@ body.mode-frame #board-container {
   pointer-events: stroke;
 }
 
-#connector-layer .connector-line:hover {
-  stroke-width: 4;
+@media (hover: hover) {
+  #connector-layer .connector-line:hover {
+    stroke-width: 4;
+  }
 }
 
 /* Connector being drawn from an edge anchor */
@@ -493,8 +526,10 @@ body.mode-frame #board-container {
   transition: background 0.1s, border-color 0.1s;
 }
 
-.connector-menu-btn:hover {
-  background: #f3f4f6;
+@media (hover: hover) {
+  .connector-menu-btn:hover {
+    background: #f3f4f6;
+  }
 }
 
 .connector-menu-btn.active {
@@ -503,10 +538,12 @@ body.mode-frame #board-container {
   color: #fff;
 }
 
-.connector-menu-btn.connector-menu-delete:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #b91c1c;
+@media (hover: hover) {
+  .connector-menu-btn.connector-menu-delete:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+  }
 }
 
 /* Selected note outline (multi-select) */
@@ -542,9 +579,11 @@ body.drawing-connector .note-anchor {
   opacity: 0.9;
 }
 
-.note-anchor:hover {
-  opacity: 1 !important;
-  transform: scale(1.3);
+@media (hover: hover) {
+  .note-anchor:hover {
+    opacity: 1 !important;
+    transform: scale(1.3);
+  }
 }
 
 /* Drop-target highlight while dragging a connector over another anchor */
@@ -561,10 +600,12 @@ body.drawing-connector .note-anchor {
 .note-anchor-left   { top: 50%;     left: -6px;  transform: translateY(-50%); }
 
 /* Hover scale needs to compose with the side translate */
-.note-anchor-top:hover    { transform: translateX(-50%) scale(1.3); }
-.note-anchor-right:hover  { transform: translateY(-50%) scale(1.3); }
-.note-anchor-bottom:hover { transform: translateX(-50%) scale(1.3); }
-.note-anchor-left:hover   { transform: translateY(-50%) scale(1.3); }
+@media (hover: hover) {
+  .note-anchor-top:hover    { transform: translateX(-50%) scale(1.3); }
+  .note-anchor-right:hover  { transform: translateY(-50%) scale(1.3); }
+  .note-anchor-bottom:hover { transform: translateX(-50%) scale(1.3); }
+  .note-anchor-left:hover   { transform: translateY(-50%) scale(1.3); }
+}
 
 /* Frame layer */
 #frame-layer {
@@ -618,8 +659,18 @@ body.drawing-connector .note-anchor {
   transition: opacity 0.15s;
 }
 
-.frame-element:hover .frame-actions {
-  opacity: 1;
+@media (hover: hover) {
+  .frame-element:hover .frame-actions {
+    opacity: 1;
+  }
+}
+
+/* Touch: hover never fires, and frames don't have a tap-selected state, so
+   keep frame actions (delete etc.) always visible on coarse pointers. */
+@media (pointer: coarse) {
+  .frame-element .frame-actions {
+    opacity: 1;
+  }
 }
 
 .frame-element .frame-resize {
@@ -713,6 +764,68 @@ body.drawing-connector .note-anchor {
   border-color: #b91c1c;
 }
 
-#import-confirm-dialog #import-confirm:hover {
-  background: #dc2626;
+@media (hover: hover) {
+  #import-confirm-dialog #import-confirm:hover {
+    background: #dc2626;
+  }
+}
+
+/* Touch (coarse pointer): enlarge touch targets that were sized for a mouse.
+   PC users with a fine pointer keep the original sizes via media query gating. */
+@media (pointer: coarse) {
+  /* Edge anchors: bigger and slightly offset further so a finger can land. */
+  .note-anchor {
+    width: 20px;
+    height: 20px;
+  }
+  .note-anchor-top    { top: -10px;    left: 50%;   transform: translateX(-50%); }
+  .note-anchor-right  { top: 50%;     right: -10px; transform: translateY(-50%); }
+  .note-anchor-bottom { bottom: -10px; left: 50%;   transform: translateX(-50%); }
+  .note-anchor-left   { top: 50%;     left: -10px;  transform: translateY(-50%); }
+
+  /* Per-note action buttons (B / align / font / color / ✕). */
+  .note-action-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  /* Resize handle: wider hit area (the visual chevron stays small). */
+  .sticky-note .resize-handle {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Toolbar palette swatches. */
+  #color-palette .color-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .color-picker-popup .color-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Toolbar push-buttons (zoom / import / export). */
+  #import-btn, #export-btn, #zoom-in-btn, #zoom-out-btn, #zoom-reset-btn {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+  .mode-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+
+  /* Connector context menu. */
+  .connector-menu-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+  }
+}
+
+/* Snappy taps on toolbar/dialog buttons (suppress 300ms double-tap delay). */
+button {
+  touch-action: manipulation;
 }
