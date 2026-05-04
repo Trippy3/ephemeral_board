@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { bin, install, Tunnel } from "cloudflared";
+import { bin, CLOUDFLARED_VERSION, type Connection, install, Tunnel } from "cloudflared";
 import qrcode from "qrcode-terminal";
 import { startServer } from "../server.js";
 
@@ -47,7 +47,7 @@ function indent(block: string, prefix = "  "): string {
     .join("\n");
 }
 
-function printBanner(localUrl: string, tunnelUrl: string, qr: string): void {
+function printBanner(localUrl: string, tunnelUrl: string, qr: string | null): void {
   const rule = "─".repeat(64);
   console.log(`\n${rule}`);
   console.log("  Ephemeral Board is live");
@@ -55,7 +55,12 @@ function printBanner(localUrl: string, tunnelUrl: string, qr: string): void {
   console.log(`  Local:    ${localUrl}`);
   console.log(`  Tunnel:   ${tunnelUrl}`);
   console.log("");
-  console.log(indent(qr));
+  if (qr) {
+    console.log(indent(qr));
+  } else {
+    console.log("  (pass --qr to also print a scannable QR code for the tunnel URL)");
+    console.log("");
+  }
   console.log("  ⚠ Anyone with this URL can read & write the board.");
   console.log("");
   console.log("  [b] open in browser   [c] copy URL   [q | Ctrl+C] stop");
@@ -143,25 +148,81 @@ function setupInteractiveKeys(url: string, shutdown: () => void): () => void {
   };
 }
 
+function parseFlags(argv: string[]): { showQr: boolean; verbose: boolean } {
+  const args = argv.slice(2);
+  return {
+    showQr: args.includes("--qr") || args.includes("-q"),
+    verbose: args.includes("--verbose") || args.includes("-v"),
+  };
+}
+
+/**
+ * Tail cloudflared's stderr / connect-disconnect / exit signals to stderr so
+ * an operator running with --verbose can see whether the tunnel is healthy
+ * (edge connections succeeded, location, retries, exit reason). Returns a
+ * teardown that detaches the listeners.
+ */
+function attachVerboseTunnelLogging(tunnel: Tunnel): () => void {
+  const log = (label: string, msg: string) => {
+    process.stderr.write(`\x1b[2m[cloudflared:${label}]\x1b[0m ${msg}\n`);
+  };
+  const onConnected = (c: Connection) => {
+    log("connected", `id=${c.id} ip=${c.ip} location=${c.location}`);
+  };
+  const onDisconnected = (c: Connection) => {
+    log("disconnected", `id=${c.id} ip=${c.ip} location=${c.location}`);
+  };
+  const onStderr = (data: string) => {
+    for (const line of data.split(/\r?\n/)) {
+      if (line.trim()) log("stderr", line);
+    }
+  };
+  const onError = (err: Error) => log("error", err.message);
+  const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    log("exit", `code=${code ?? "-"} signal=${signal ?? "-"}`);
+  };
+  tunnel.on("connected", onConnected);
+  tunnel.on("disconnected", onDisconnected);
+  tunnel.on("stderr", onStderr);
+  tunnel.on("error", onError);
+  tunnel.on("exit", onExit);
+  return () => {
+    tunnel.off("connected", onConnected);
+    tunnel.off("disconnected", onDisconnected);
+    tunnel.off("stderr", onStderr);
+    tunnel.off("error", onError);
+    tunnel.off("exit", onExit);
+  };
+}
+
 async function main(): Promise<void> {
+  const { showQr, verbose } = parseFlags(process.argv);
+
   await ensureCloudflared();
+
+  if (verbose) {
+    console.error(`[cloudflared:bin] ${bin}`);
+    console.error(`[cloudflared:version] expected ${CLOUDFLARED_VERSION}`);
+  }
 
   const { port, close } = await startServer();
   const localUrl = `http://localhost:${port}`;
   console.log("Starting Cloudflare Tunnel…");
 
   const tunnel = Tunnel.quick(localUrl);
+  const detachVerbose = verbose ? attachVerboseTunnelLogging(tunnel) : () => undefined;
 
   let publicUrl: string;
   try {
     publicUrl = await waitForTunnelUrl(tunnel);
   } catch (err) {
     console.error(err);
+    detachVerbose();
     await close();
     process.exit(1);
   }
 
-  const qr = await renderQrCode(publicUrl);
+  const qr = showQr ? await renderQrCode(publicUrl) : null;
   printBanner(localUrl, publicUrl, qr);
 
   let stopping = false;
@@ -170,6 +231,7 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     teardownKeys();
+    detachVerbose();
     console.log("\nShutting down…");
     void (async () => {
       try {

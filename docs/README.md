@@ -36,7 +36,9 @@ pnpm dev
 ### 社内メンバーと共有する（pnpm share）
 
 ```bash
-pnpm share
+pnpm share              # URL のみ表示
+pnpm share --qr         # トンネル URL の QR コードもターミナルに描画
+pnpm share --verbose    # cloudflared の接続状況を stderr に逐次出力（疎通診断用）
 ```
 
 これだけで以下が一気に立ち上がる:
@@ -45,7 +47,7 @@ pnpm share
 2. サーバーを起動
 3. Cloudflare Tunnel を起動（初回のみ `cloudflared` バイナリを自動ダウンロード）
 4. `Local` URL と `Tunnel` URL（`*.trycloudflare.com`）をターミナルに表示
-5. **トンネル URL の QR コード** をターミナル内に描画（スマホで即読み取り可）
+5. `--qr` (または `-q`) を付けた場合のみ、トンネル URL の QR コードを描画（スマホで即読み取り可）
 
 起動後、ターミナル上で以下のキーが効く:
 
@@ -54,6 +56,27 @@ pnpm share
 | `b` | 既定ブラウザでトンネル URL を開く |
 | `c` | トンネル URL をクリップボードへコピー |
 | `q` / `Ctrl+C` | サーバーとトンネルを順にクリーン停止 |
+
+#### コマンドラインオプション
+
+| フラグ | 動作 |
+|--------|------|
+| `--qr` / `-q` | トンネル URL の QR コードをターミナルに描画する |
+| `--verbose` / `-v` | cloudflared バイナリのパス・期待バージョン、エッジ接続/切断・stderr・終了コードを stderr に逐次出力。Cloudflare Tunnel が正しく動いているか診断したい時に使う |
+
+`pnpm share <flags>` の形で渡せば、フラグはそのまま `tsx scripts/share.ts` に転送される（pnpm スクリプトの末尾追記仕様）。
+
+`--verbose` の出力例（行頭の `[cloudflared:label]` は薄い灰色で表示される）:
+
+```
+[cloudflared:bin] /home/you/.cloudflared/cloudflared
+[cloudflared:version] expected 2024.10.1
+[cloudflared:stderr] Starting tunnel tunnelID=xxxxx
+[cloudflared:connected] id=abc ip=198.41.x.x location=NRT
+[cloudflared:connected] id=def ip=198.41.y.y location=KIX
+```
+
+トンネル URL が出ない、接続が切れる、エッジに繋がらない等のトラブル時は `--verbose` を付けて再現させると、cloudflared 自身の診断ログが直接見えます。
 
 `c` のクリップボード連携は OS ごとに `pbcopy` (macOS) / `wl-copy` または `xclip` (Linux) / `clip` (Windows) を呼び出すため、Linux で `xclip` 等が未インストールの場合はエラーが出る (代わりに `b` でブラウザを開けば URL バーから手動コピー可能)。
 

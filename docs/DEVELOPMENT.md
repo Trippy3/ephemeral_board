@@ -50,7 +50,7 @@ ephemeral_board/
 | `pnpm dev` | サーバー（tsx watch）+ クライアントビルド（esbuild watch）を同時起動 |
 | `pnpm build` | クライアント JS を minify ビルド |
 | `pnpm start` | サーバーのみ起動（ウォッチなし） |
-| `pnpm share` | `pnpm build` 後にサーバー + Cloudflare Tunnel を起動し公開 URL を表示 |
+| `pnpm share` | `pnpm build` 後にサーバー + Cloudflare Tunnel を起動し公開 URL を表示。`--qr` で QR コードも描画、`--verbose` で cloudflared の接続診断ログを stderr 出力 |
 | `pnpm lint` | Biome で Lint チェック |
 | `pnpm format` | Biome で Format 自動修正 |
 | `pnpm check` | Biome で Lint + Format を自動修正 |
@@ -80,7 +80,7 @@ Biome の設定は `biome.json`、TypeScript の設定は `tsconfig.json` を参
 | `js-yaml` | Markdown 内 YAML フェンスのシリアライズ / パース |
 | `zod` | インポート時のスキーマ検証 |
 | `cloudflared` (devDep) | `pnpm share` の Quick Tunnel 起動・バイナリ管理 |
-| `qrcode-terminal` (devDep) | `pnpm share` 起動時にトンネル URL の QR コードをターミナル描画 |
+| `qrcode-terminal` (devDep) | `pnpm share --qr` 指定時にトンネル URL の QR コードをターミナル描画 |
 
 ---
 
