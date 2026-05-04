@@ -80,6 +80,7 @@ Biome の設定は `biome.json`、TypeScript の設定は `tsconfig.json` を参
 | `js-yaml` | Markdown 内 YAML フェンスのシリアライズ / パース |
 | `zod` | インポート時のスキーマ検証 |
 | `cloudflared` (devDep) | `pnpm share` の Quick Tunnel 起動・バイナリ管理 |
+| `qrcode-terminal` (devDep) | `pnpm share` 起動時にトンネル URL の QR コードをターミナル描画 |
 
 ---
 
