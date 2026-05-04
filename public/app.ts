@@ -71,14 +71,29 @@ const connectorLayer = document.getElementById("connector-layer") as unknown as 
 const frameLayer = document.getElementById("frame-layer")!;
 
 // --- Color palette ---
+const colorCurrentBtn = document.getElementById("color-current-btn") as HTMLButtonElement;
+
+function setSelectedColor(hex: string): void {
+  selectedColor = hex;
+  document.querySelectorAll("#color-palette .color-btn").forEach((b) => {
+    const el = b as HTMLElement;
+    el.classList.toggle("active", el.dataset.color === hex);
+  });
+  if (colorCurrentBtn) colorCurrentBtn.style.background = hex;
+}
+
 document.querySelectorAll("#color-palette .color-btn").forEach((btn) => {
   const el = btn as HTMLElement;
-  if (el.dataset.color === selectedColor) el.classList.add("active");
-  el.addEventListener("click", () => {
-    document.querySelector("#color-palette .color-btn.active")?.classList.remove("active");
-    el.classList.add("active");
-    selectedColor = el.dataset.color!;
-  });
+  el.addEventListener("click", () => setSelectedColor(el.dataset.color!));
+});
+
+// Initialize the active swatch + the compact (mobile) entry button to match
+// the default selectedColor so both UIs are in sync from the first render.
+setSelectedColor(selectedColor);
+
+colorCurrentBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  showGlobalColorPicker(colorCurrentBtn);
 });
 
 // --- Name dialog ---
@@ -100,6 +115,22 @@ nameInput.addEventListener("keydown", (e) => {
     if (name) joinBoard(name);
   }
 });
+
+// --- Toolbar height tracking ---
+// On narrow / coarse-pointer screens the toolbar wraps to multiple rows, so
+// its height becomes dynamic. Mirror it into a CSS variable that
+// #board-container's `top` consumes, instead of hard-coding 48px.
+const toolbarEl = document.getElementById("toolbar");
+if (toolbarEl) {
+  const updateToolbarHeight = () => {
+    document.documentElement.style.setProperty("--toolbar-h", `${toolbarEl.offsetHeight}px`);
+  };
+  updateToolbarHeight();
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(updateToolbarHeight).observe(toolbarEl);
+  }
+  window.addEventListener("resize", updateToolbarHeight);
+}
 
 // --- Board transform ---
 function updateTransform() {
@@ -524,6 +555,64 @@ function showColorPicker(noteId: string, noteEl: HTMLElement) {
     if (!popup.contains(e.target as Node)) {
       cleanup();
     }
+  };
+
+  function cleanup() {
+    popup.remove();
+    document.removeEventListener("pointerdown", close);
+    activePickerCleanup = null;
+  }
+
+  activePickerCleanup = cleanup;
+  setTimeout(() => document.addEventListener("pointerdown", close), 0);
+}
+
+// Compact (mobile) color picker for the toolbar's "current color" button.
+// Shares the .color-picker-popup styling with the per-note picker but updates
+// the global selectedColor instead of recoloring an existing note.
+function showGlobalColorPicker(anchorEl: HTMLElement): void {
+  if (activePickerCleanup) {
+    activePickerCleanup();
+    activePickerCleanup = null;
+  }
+
+  const popup = document.createElement("div");
+  popup.className = "color-picker-popup";
+
+  for (const { hex } of NOTE_COLORS) {
+    const btn = document.createElement("button");
+    btn.className = "color-btn";
+    btn.style.background = hex;
+    if (hex === selectedColor) btn.classList.add("active");
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setSelectedColor(hex);
+      cleanup();
+    });
+    popup.appendChild(btn);
+  }
+
+  // Anchor below the toolbar using fixed positioning so it follows the
+  // viewport instead of the (zoomable) board. We anchor against the toolbar's
+  // bottom (not the button's), because on wrapped/multi-row toolbars the
+  // button sits on row 1 while subsequent rows extend below it — and
+  // #toolbar has a higher z-index than .color-picker-popup, so the popup
+  // would otherwise be obscured by row 2+. We also raise z-index inline as
+  // belt-and-suspenders. Horizontal: clamp inside the viewport.
+  popup.style.position = "fixed";
+  popup.style.zIndex = "10001";
+  document.body.appendChild(popup);
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const toolbar = document.getElementById("toolbar");
+  const top = (toolbar?.getBoundingClientRect().bottom ?? anchorRect.bottom) + 4;
+  const popupWidth = popup.offsetWidth || 280;
+  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - popupWidth - 8));
+  popup.style.left = `${left}px`;
+  popup.style.top = `${top}px`;
+
+  const close = (e: Event) => {
+    const t = e.target as Node;
+    if (!popup.contains(t) && t !== anchorEl) cleanup();
   };
 
   function cleanup() {

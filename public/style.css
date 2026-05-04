@@ -18,7 +18,7 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 48px;
+  min-height: 48px;
   background: #fff;
   border-bottom: 1px solid #ddd;
   display: flex;
@@ -110,7 +110,7 @@ body {
 /* Board */
 #board-container {
   position: fixed;
-  top: 48px;
+  top: var(--toolbar-h, 48px);
   left: 0;
   right: 0;
   bottom: 0;
@@ -828,4 +828,38 @@ body.drawing-connector .note-anchor {
 /* Snappy taps on toolbar/dialog buttons (suppress 300ms double-tap delay). */
 button {
   touch-action: manipulation;
+}
+
+/* Compact color-picker entry button: hidden by default; revealed on narrow /
+   coarse-pointer screens where the 10-swatch palette would overflow the bar. */
+#color-current-btn {
+  display: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #333;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
+  background: #fef08a;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Narrow viewport OR coarse pointer: collapse the palette into the entry
+   button, and let the toolbar wrap as a safety net for any other overflow. */
+@media (max-width: 720px), (pointer: coarse) {
+  #color-palette {
+    display: none;
+  }
+  #color-current-btn {
+    display: inline-block;
+  }
+  #toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 4px 12px;
+    row-gap: 4px;
+  }
+  #toolbar-left, #toolbar-right {
+    flex-wrap: wrap;
+  }
 }
