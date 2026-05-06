@@ -22,14 +22,34 @@ describe("sanitizeNoteHtml (DOMPurify wrapper)", () => {
     expect(out).toContain("kept");
   });
 
-  it("style attribute: keeps only text-align and font-size", () => {
+  it("style attribute: keeps only text-align, font-size, font-weight", () => {
     const out = sanitizeNoteHtml(
-      '<div style="text-align:center;color:red;background:blue;font-size:18px">x</div>',
+      '<div style="text-align:center;color:red;background:blue;font-size:18px;font-weight:bold">x</div>',
     );
     expect(out).toMatch(/text-align\s*:\s*center/);
     expect(out).toMatch(/font-size\s*:\s*18px/);
+    expect(out).toMatch(/font-weight\s*:\s*bold/);
     expect(out).not.toMatch(/color\s*:\s*red/);
     expect(out).not.toMatch(/background/);
+  });
+
+  // Chromium の execCommand("bold") は文脈によって `<b>` ではなく
+  // `<span style="font-weight: bold">` を挿入する。font-weight が剥がれると
+  // ローカル / 他クライアントから太字が消える回帰が起きるので、両表現を残す。
+  it("preserves bold rendered as <span style='font-weight: bold'>", () => {
+    const out = sanitizeNoteHtml('<span style="font-weight: bold">abc</span>');
+    expect(out).toMatch(/<span[^>]*style="[^"]*font-weight\s*:\s*bold/);
+    expect(out).toContain("abc");
+  });
+
+  it("preserves font-weight: 700 numeric form", () => {
+    const out = sanitizeNoteHtml('<span style="font-weight: 700">abc</span>');
+    expect(out).toMatch(/font-weight\s*:\s*700/);
+  });
+
+  it("preserves font-weight: normal (used to override outer bold)", () => {
+    const out = sanitizeNoteHtml('<b><span style="font-weight: normal">abc</span></b>');
+    expect(out).toMatch(/font-weight\s*:\s*normal/);
   });
 
   it("style attribute: drops attribute entirely if no allowed rule remains", () => {

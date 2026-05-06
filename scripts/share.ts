@@ -150,9 +150,13 @@ function setupInteractiveKeys(url: string, shutdown: () => void): () => void {
 
 function parseFlags(argv: string[]): { showQr: boolean; verbose: boolean } {
   const args = argv.slice(2);
+  const quiet = args.includes("--quiet") || args.includes("-s");
+  const explicitVerbose = args.includes("--verbose") || args.includes("-v");
   return {
     showQr: args.includes("--qr") || args.includes("-q"),
-    verbose: args.includes("--verbose") || args.includes("-v"),
+    // Quick Tunnel (TryCloudflare) は uptime 保証がなく落ちやすいので、
+    // 既定で接続診断ログを stderr に出す。`--quiet` で抑止可能。
+    verbose: explicitVerbose || !quiet,
   };
 }
 

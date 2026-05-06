@@ -60,7 +60,7 @@ const GUIDE_NOTES: { text: string; color: string; width: number; height: number 
     color: "#86efac",
     width: 280,
     height: 250,
-    text: "🎨 色と書式\n\n- ツールバーで色を選んでから作成\n- 🎨 ボタン → 色を変更\n- B(Bold) / 左・中央・右整列 / A−A+(文字サイズ) で書式変更",
+    text: "🎨 色と書式\n\n- ツールバーで色を選んでから作成\n- 🎨 ボタン → 色を変更\n- 編集中に Ctrl+B (Mac は ⌘+B) → 選択範囲を太字トグル\n- 左・中央・右整列 / A−A+(文字サイズ) で書式変更",
   },
   {
     color: "#fef08a",

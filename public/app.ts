@@ -273,17 +273,6 @@ function renderNote(note: StickyNote): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "note-actions";
 
-  const boldBtn = document.createElement("button");
-  boldBtn.className = "note-action-btn";
-  boldBtn.innerHTML = "<b>B</b>";
-  boldBtn.title = "Bold (Ctrl+B)";
-  boldBtn.addEventListener("pointerdown", (e) => e.preventDefault());
-  boldBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    document.execCommand("bold");
-    flushNoteEdit(note.id, text);
-  });
-
   const alignLeftBtn = document.createElement("button");
   alignLeftBtn.className = "note-action-btn";
   alignLeftBtn.textContent = "⯇";
@@ -350,7 +339,6 @@ function renderNote(note: StickyNote): HTMLElement {
   });
 
   actions.append(
-    boldBtn,
     alignLeftBtn,
     alignCenterBtn,
     alignRightBtn,
