@@ -1,5 +1,8 @@
 # Ephemeral Board
 
+<img width="1788" height="875" alt="Screenshot from 2026-05-06 17-03-59" src="https://github.com/user-attachments/assets/0ea68581-1000-4b0e-9098-d19bf104369d" />
+
+
 Miro / FigJam ライクなリアルタイム共同付箋ボードアプリケーション。
 ローカルネットワーク上で動作し、HTTP トンネルを通じて社内メンバーと共同ワークできる。
 
