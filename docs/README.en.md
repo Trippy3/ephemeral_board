@@ -41,9 +41,9 @@ Open http://localhost:3000 in your browser.
 ### Share with Teammates (pnpm share)
 
 ```bash
-pnpm share              # Print URL only
+pnpm share              # Streams cloudflared connection diagnostics to stderr by default
 pnpm share --qr         # Also render the tunnel URL as a QR code in the terminal
-pnpm share --verbose    # Stream cloudflared connection status to stderr (for diagnosis)
+pnpm share --quiet      # Suppress the diagnostics and print only the URL banner
 ```
 
 This single command brings up everything:
@@ -67,11 +67,12 @@ After startup, the following keys work in the terminal:
 | Flag | Action |
 |--------|------|
 | `--qr` / `-q` | Render a QR code of the tunnel URL in the terminal |
-| `--verbose` / `-v` | Stream the cloudflared binary path / expected version, edge connect/disconnect events, stderr, and exit code to stderr. Use this when diagnosing whether the Cloudflare Tunnel is running correctly |
+| `--verbose` / `-v` | Stream the cloudflared binary path / expected version, edge connect/disconnect events, stderr, and exit code to stderr. **Enabled by default** — passing it explicitly is a no-op. Quick Tunnel has no uptime SLA and tends to drop, so we leave diagnostics on by default to keep a trail when it does |
+| `--quiet` / `-s` | Suppress the cloudflared diagnostic logs above. Use it when you only want to see the URL banner |
 
 If you pass flags as `pnpm share <flags>`, they are forwarded directly to `tsx scripts/share.ts` (per pnpm's trailing-args convention).
 
-Example output of `--verbose` (the leading `[cloudflared:label]` is shown in dim gray):
+Example of the diagnostic logs printed to stderr (the leading `[cloudflared:label]` is shown in dim gray):
 
 ```
 [cloudflared:bin] /home/you/.cloudflared/cloudflared
@@ -81,7 +82,7 @@ Example output of `--verbose` (the leading `[cloudflared:label]` is shown in dim
 [cloudflared:connected] id=def ip=198.41.y.y location=KIX
 ```
 
-When the tunnel URL doesn't appear, the connection drops, or you can't reach the edge, reproduce the issue with `--verbose` and you'll see cloudflared's own diagnostic logs directly.
+When the tunnel URL doesn't appear, the connection drops, or you can't reach the edge, the diagnostic logs above (printed to stderr by default) include cloudflared's own messages and usually contain the clue. If you happen to be passing `--quiet`, drop it and reproduce.
 
 The `c` clipboard integration calls `pbcopy` (macOS) / `wl-copy` or `xclip` (Linux) / `clip` (Windows) per OS, so on Linux without `xclip` (etc.) installed you'll get an error (workaround: press `b` to open the URL in the browser and copy it from the address bar).
 
