@@ -15,7 +15,8 @@ Board state can be saved and restored as Markdown, so it can be carried over bet
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Usage](#usage)
+- [Auto-generate Boards with the Claude Code Skill](#auto-generate-boards-with-the-claude-code-skill)
+- [How to Operate](#how-to-operate)
 - [Markdown Export / Import](#markdown-export--import)
 - [Caveats](#caveats)
 - [Developer Documentation](#developer-documentation)
@@ -59,7 +60,7 @@ After startup, the following keys work in the terminal:
 | Key | Action |
 |------|------|
 | `b` | Open the tunnel URL in your default browser |
-| `c` | Copy the tunnel URL to the clipboard |
+| `c` | Copy the tunnel URL to the clipboard (Linux requires `xclip` or `wl-copy`) |
 | `q` / `Ctrl+C` | Cleanly stop the server and tunnel in order |
 
 #### Command-line Options
@@ -67,57 +68,65 @@ After startup, the following keys work in the terminal:
 | Flag | Action |
 |--------|------|
 | `--qr` / `-q` | Render a QR code of the tunnel URL in the terminal |
-| `--verbose` / `-v` | Stream the cloudflared binary path / expected version, edge connect/disconnect events, stderr, and exit code to stderr. **Enabled by default** — passing it explicitly is a no-op. Quick Tunnel has no uptime SLA and tends to drop, so we leave diagnostics on by default to keep a trail when it does |
-| `--quiet` / `-s` | Suppress the cloudflared diagnostic logs above. Use it when you only want to see the URL banner |
+| `--quiet` / `-s` | Suppress cloudflared diagnostic logs and only print the URL banner |
 
-If you pass flags as `pnpm share <flags>`, they are forwarded directly to `tsx scripts/share.ts` (per pnpm's trailing-args convention).
-
-Example of the diagnostic logs printed to stderr (the leading `[cloudflared:label]` is shown in dim gray):
-
-```
-[cloudflared:bin] /home/you/.cloudflared/cloudflared
-[cloudflared:version] expected 2024.10.1
-[cloudflared:stderr] Starting tunnel tunnelID=xxxxx
-[cloudflared:connected] id=abc ip=198.41.x.x location=NRT
-[cloudflared:connected] id=def ip=198.41.y.y location=KIX
-```
-
-When the tunnel URL doesn't appear, the connection drops, or you can't reach the edge, the diagnostic logs above (printed to stderr by default) include cloudflared's own messages and usually contain the clue. If you happen to be passing `--quiet`, drop it and reproduce.
-
-The `c` clipboard integration calls `pbcopy` (macOS) / `wl-copy` or `xclip` (Linux) / `clip` (Windows) per OS, so on Linux without `xclip` (etc.) installed you'll get an error (workaround: press `b` to open the URL in the browser and copy it from the address bar).
-
-> ⚠ **Anyone with the URL can view and edit the board.**
-> For boards with confidential content, protect them with tunnel-side authentication (e.g., Cloudflare Access).
-
-#### Using cloudflared Manually
-
-In a separate terminal (assumes you have `cloudflared` installed yourself):
-
-```bash
-pnpm dev   # or pnpm start
-cloudflared tunnel --url http://localhost:3000
-```
-
-### Production-style Run (No Watch)
-
-```bash
-pnpm build   # Bundle the client JS (minified)
-pnpm start   # Start the server only
-```
+When the tunnel URL doesn't appear or the connection drops, the cloudflared diagnostic logs streamed to stderr (on by default) usually contain the clue. The diagnostic log format, running cloudflared yourself, the production-style (no-watch) run, and migrating to a Named Tunnel are covered in [DEVELOPMENT.md (Japanese)](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md).
 
 ---
 
-## Usage
+## Auto-generate Boards with the Claude Code Skill
 
-### Joining a Board
+If you use [Claude Code](https://claude.com/claude-code), you can **auto-generate** an organized board (sticky notes, color coding, frames, and arrows) from messy inputs like meeting minutes, brainstorm notes, requirement lists, or article summaries.
 
-1. Opening the URL shows a name-input dialog
-2. Enter your name and click "Join" (or press Enter)
-3. You join the board and start collaborating with other users
+The repository ships the `create-sticky-board` skill at `.claude/skills/create-sticky-board/`. Claude Code picks it up automatically when launched at the project root.
 
-### Using Multiple Boards
+### How to Use
 
-The URL path becomes the board ID.
+Inside a Claude Code session, invoke `/create-sticky-board` as a slash command and pass the content you want to board:
+
+```text
+/create-sticky-board Please turn the following meeting notes into a board.
+- Target: in-house engineers
+- Pain points: docs are scattered / search returns stale info
+- Ideas: a Slack-resident Q&A bot / score document freshness
+- Actions: a 2-week PoC / interview 5 users
+```
+
+The skill automatically:
+
+1. Reads the input's structure and decides categories (e.g., premise / problems / ideas / actions)
+2. Picks a layout (category grid / flowchart / mind map / matrix / timeline)
+3. Designs a legend frame and color coding (3–5 of the 10 available colors mapped to categories)
+4. Emits a single `.md` file containing notes, frames, and connectors
+
+Load the generated `.md` from **Import MD** to restore the organized board as-is.
+
+### When It Helps
+
+- You want to lay out meeting minutes / brainstorm notes as sticky notes
+- You want to classify points / problems / ideas with colors and frames
+- You want to visualize causality, dependencies, or flow with arrows
+- You want to mind-map a long article or document summary
+
+If you only need to edit an already-exported `.md`, or you just want a plain text summary, normal editing is enough.
+
+### Output Format and Customization
+
+The `.md` the skill produces conforms to this repository's Markdown import format (YAML fences). The skill itself, format spec, and a sample output live under `.claude/skills/create-sticky-board/`:
+
+- `SKILL.md` — design guidelines: layout rules, color usage, ID conventions
+- `references/example_output.md` — a complete sample output
+- `references/format_spec.md` — field-by-field validation spec
+
+For the Markdown import format itself, see [DEVELOPMENT.md — Markdown Output Format Spec (Japanese)](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md#markdown-出力フォーマット仕様).
+
+---
+
+## How to Operate
+
+Opening the URL shows a name-input dialog. Enter your name and click "Join" (or press Enter) to join the board and start collaborating.
+
+The URL path becomes the board ID. Visiting a different URL automatically creates an independent board.
 
 | URL | Board ID |
 |-----|----------|
@@ -125,9 +134,9 @@ The URL path becomes the board ID.
 | `http://localhost:3000/sprint-retro` | `sprint-retro` |
 | `http://localhost:3000/brainstorm-2026` | `brainstorm-2026` |
 
-Visiting a different URL automatically creates an independent board.
+### Sticky Notes
 
-### Working with Sticky Notes
+#### Creating and Editing
 
 | Action | How |
 |------|------|
@@ -143,7 +152,7 @@ Visiting a different URL automatically creates an independent board.
 | Undo delete | Ctrl+Z (up to 20 of your own deletes) |
 | Copy / Paste | Select then Ctrl+C → Ctrl+V at the cursor position |
 
-### Selecting Notes
+#### Selecting
 
 | Action | How |
 |------|------|
@@ -155,86 +164,53 @@ Visiting a different URL automatically creates an independent board.
 | Move as a group | Drag any note in the selection |
 | Delete in bulk | Delete key |
 
-### Connecting Notes with Arrows
+#### Connecting with Arrows
 
 There's no need to switch into a dedicated mode.
 
 1. **Hover** over the source note → blue **● (edge anchors)** appear at the midpoints of the four edges
 2. Start **dragging** from any ● → **all notes' anchors become visible** (drop targets)
 3. Drop on a target note's **●** (which highlights green) → an arrow is drawn between the two anchors
-4. The line is **anchored** to both edge midpoints and follows the notes when they move
+4. The line is **anchored** to both edge midpoints and follows the notes when they move  
    * If you drop on a note's body (not on a ●), the closest edge is chosen automatically
 
-#### Switching Shape / Arrow / Line and Deletion
+Clicking an existing connector opens a mini menu where you can independently switch the shape (straight `━` / orthogonal `⌐` / curved `⌒`) and the end (arrowhead `→` / plain line `—`), or delete it with `✕`.
 
-Clicking an existing connector opens a mini menu:
+If you don't drop on anything, or drop on the same note, the action is canceled. Deleting either endpoint note automatically removes the corresponding connector.
 
-| Group | Button | Action |
-|----------|--------|------|
-| Shape | `━` | Straight line (default) |
-| Shape | `⌐` | Orthogonal (right-angle bends) |
-| Shape | `⌒` | Curved (arc) |
-| End | `→` | With arrowhead |
-| End | `—` | Plain line, no arrowhead |
-| | `✕` | Delete the connector |
-
-Shape and end are switched independently (e.g., orthogonal arrow, curved line, etc.).
-
-If you don't drop on anything, or drop on the same note, the action is canceled.
-Deleting either endpoint note automatically removes the corresponding connector.
-
-### Framing an Area (Frames)
+#### Framing an Area
 
 1. Click the ⬜ toolbar button (or press `F`) → enters frame-drawing mode
 2. Left-drag on empty space to draw a rectangle
 3. The mode auto-exits after drawing
 4. Edit title / hover → ✕ to delete / drag the bottom-right to resize / drag the body to move
 
-### Choosing the Default Color
+#### Choosing the Default Color
 
-Pick a color from the palette on the left of the toolbar; the next note you create uses that color.
-10 colors are available: Yellow / Red / Green / Blue / Purple / Orange / Pink / White / Gray / Black
+Pick a color from the palette on the left of the toolbar; the next note you create uses that color. 10 colors are available (Yellow / Red / Green / Blue / Purple / Orange / Pink / White / Gray / Black). White notes get a faint border so they don't blend into the background, and black notes automatically switch their text to white.
 
-White notes get a border in the palette and a faint border on the board so they don't blend into the background.
-Black notes automatically switch their text to white.
+### The Board
 
-### Board-level Operations
+#### Pan and Zoom
 
 | Action | How |
 |------|------|
 | Pan (default) | **Right-click + drag** or **middle-click + drag** |
 | Pan (temporary) | **Hold Space and left-drag** |
-| Marquee select | Left-drag on empty space |
-| Move a note | Left-drag on a note |
 | Zoom in / out | Mouse wheel, or the +/- buttons in the toolbar |
 | Reset zoom | The `100%` button in the toolbar |
-| Frame-drawing mode | ⬜ button or `F` |
 | Exit mode / deselect | Esc |
 
-Zoom centers on the mouse cursor (range: 0.2x–3.0x).
-The right-click context menu is suppressed inside the board (it's used for panning).
+Zoom centers on the mouse cursor (range: 0.2x–3.0x). The right-click context menu is suppressed inside the board (it's used for panning).
 
-### Keyboard Shortcuts
-
-| Key | Function |
-|------|------|
-| Space (held) + left-drag | Pan the board |
-| Ctrl+B | Bold the text being edited |
-| Ctrl+C | Copy selected notes to clipboard |
-| Ctrl+V | Paste notes at the cursor position |
-| Ctrl+Z | Undo your last delete |
-| Delete / Backspace | Delete selected notes |
-| Esc | Exit frame mode / deselect |
-| F | Toggle frame mode |
-
-### Seeing Other Users
+#### Seeing Other Users
 
 - User-initial avatars are shown on the right of the toolbar
 - Other users' cursors (colored arrow + name label) are rendered live on the board
 
-### Mobile (Touch) Operation
+#### Mobile (Touch) Operation
 
-Since PC shortcuts and right-click aren't available, gesture-based equivalents are provided. The feel from a PC is preserved.
+Since PC shortcuts and right-click aren't available, gesture-based equivalents are provided.
 
 | Action | Touch |
 |------|--------|
@@ -252,12 +228,7 @@ Since PC shortcuts and right-click aren't available, gesture-based equivalents a
 
 On touch devices, touch targets are automatically enlarged (edge anchors / action buttons / resize handles, etc.).
 
-#### Limitations
-
-- **Marquee select is not supported on touch** (one-finger drag is mapped to pan). To multi-select, tap notes one by one, or use a PC.
-- **Keyboard shortcuts are unsupported**: Undo (Ctrl+Z) / copy-paste / bold (Ctrl+B) don't fire from the soft keyboard, so they're PC-only.
-- **Note deletion goes through the ✕ button** (the Delete key isn't available).
-- UI that previously required hover is replaced by "tap to select → see actions", so be mindful of the **selection state** for follow-up actions.
+**Limitations**: Marquee select is not supported because one-finger drag is mapped to pan (multi-select by tapping notes one at a time). Keyboard shortcuts like Undo (Ctrl+Z), copy-paste, and bold (Ctrl+B) don't fire from the soft keyboard, so they're PC-only. Note deletion goes through the ✕ button.
 
 ---
 
@@ -276,7 +247,7 @@ For the full format spec, see [DEVELOPMENT.md — Markdown Output Format Spec (J
 3. Pressing "Replace" **fully replaces** the current board, and the change is reflected immediately for every connected client
 4. Invalid YAML or unknown schemas are rejected up front by validation (an alert appears before the dialog)
 
-⚠ Import is **replace-only** — the current board's content is lost (cannot be undone). Export beforehand to be safe.
+Export beforehand to be safe — import is replace-only and cannot be undone (see "Caveats" at the end for details).
 
 ### Limits and Safeguards
 
@@ -291,7 +262,7 @@ For the full format spec, see [DEVELOPMENT.md — Markdown Output Format Spec (J
 
 - **No persistence**: All data is lost when the server restarts (by design — use MD export/import).
 - **Auto-cleanup**: Boards untouched for 24 hours since the last operation are deleted automatically.
-- **No authentication**: Anyone with the URL can access the board (delegate auth to the tunnel layer).
+- **No authentication**: This app is designed for ephemeral collaboration (workshops, retros, brainstorms) and is **not** intended for handling confidential data. Anyone with the URL can access the board. If you need robust security, set up an alternative yourself — e.g. a Named Tunnel with Cloudflare Access.
 - **Text conflicts**: Concurrent edits of the same note follow LWW (last write wins).
 - **Undo scope**: Only your own deletes, up to 20.
 - **Import is replace-only**: Merging into an existing board is not supported.
