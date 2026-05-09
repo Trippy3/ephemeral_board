@@ -71,7 +71,7 @@ After startup, the following keys work in the terminal:
 | `--qr` / `-q` | Render a QR code of the tunnel URL in the terminal |
 | `--quiet` / `-s` | Suppress cloudflared diagnostic logs and only print the URL banner |
 
-When the tunnel URL doesn't appear or the connection drops, the cloudflared diagnostic logs streamed to stderr (on by default) usually contain the clue. The diagnostic log format, running cloudflared yourself, the production-style (no-watch) run, and migrating to a Named Tunnel are covered in [DEVELOPMENT.md (Japanese)](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md).
+Note that Quick Tunnel is a Cloudflare service explicitly designated **"for testing and development only"** with **no SLA / uptime guarantee** — this tool assumes ephemeral, session-scoped use. When the tunnel URL doesn't appear or the connection drops, the cloudflared diagnostic logs streamed to stderr (on by default) usually contain the clue. Terms-of-service constraints, the diagnostic log format, running cloudflared yourself, the production-style (no-watch) run, and migrating to a Named Tunnel are all covered in [DEVELOPMENT.md (Japanese)](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md#技術的意思決定の背景).
 
 ---
 

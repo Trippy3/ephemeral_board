@@ -71,7 +71,7 @@ pnpm share --quiet      # 診断ログを抑止して URL バナーのみ表示
 | `--qr` / `-q` | トンネル URL の QR コードをターミナルに描画する |
 | `--quiet` / `-s` | cloudflared 診断ログを抑止し、URL バナーだけ表示する |
 
-トンネル URL が出ない・接続が切れる等のトラブル時は、stderr に出る cloudflared 診断ログ（既定 ON）が手がかりになる。診断ログのフォーマット・自前 cloudflared での起動・本番風起動・Named Tunnel への移行などは [DEVELOPMENT.md](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md) を参照。
+なお Quick Tunnel は Cloudflare 公式が「テスト・開発用途のみ」と明示するサービス（SLA / uptime 保証なし）で、本ツールはセッション単位の一時利用前提。トンネル URL が出ない・接続が切れる等のトラブル時は、stderr に出る cloudflared 診断ログ（既定 ON）が手がかりになる。利用規約上の制約・診断ログのフォーマット・自前 cloudflared での起動・本番風起動・Named Tunnel への移行などは [DEVELOPMENT.md](https://github.com/Trippy3/ephemeral_board/blob/main/docs/DEVELOPMENT.md#技術的意思決定の背景) を参照。
 
 ---
 
