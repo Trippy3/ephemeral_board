@@ -107,6 +107,13 @@ body {
   position: relative;
 }
 
+.user-badge-overflow {
+  background: #6b7280;
+  cursor: help;
+  font-size: 11px;
+  letter-spacing: -0.02em;
+}
+
 /* Board */
 #board-container {
   position: fixed;

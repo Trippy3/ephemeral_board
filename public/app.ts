@@ -754,25 +754,47 @@ function renderCursor(data: { id: string; name: string; color: string; x: number
 }
 
 // --- User badges ---
-const userBadges = new Map<string, HTMLElement>();
+// Toolbar width is finite; once we exceed MAX_VISIBLE_USER_BADGES, collapse the
+// rest into a single "+N" badge so a large room never pushes other toolbar
+// buttons off-screen. The app is not designed for large user counts — see
+// docs/DEVELOPMENT.md for the full caveat.
+const MAX_VISIBLE_USER_BADGES = 8;
+type UserInfo = { name: string; color: string };
+const users = new Map<string, UserInfo>();
 
-function addUserBadge(id: string, name: string, color: string) {
-  if (userBadges.has(id)) return;
+function createUserBadge(info: UserInfo): HTMLElement {
   const badge = document.createElement("div");
   badge.className = "user-badge";
-  badge.style.backgroundColor = color;
-  badge.textContent = name.charAt(0).toUpperCase();
-  badge.title = name;
-  usersList.appendChild(badge);
-  userBadges.set(id, badge);
+  badge.style.backgroundColor = info.color;
+  badge.textContent = info.name.charAt(0).toUpperCase();
+  badge.title = info.name;
+  return badge;
+}
+
+function renderUserBadges(): void {
+  usersList.replaceChildren();
+  const entries = Array.from(users.values());
+  if (entries.length <= MAX_VISIBLE_USER_BADGES) {
+    for (const info of entries) usersList.appendChild(createUserBadge(info));
+    return;
+  }
+  const visible = entries.slice(0, MAX_VISIBLE_USER_BADGES - 1);
+  const hidden = entries.slice(MAX_VISIBLE_USER_BADGES - 1);
+  for (const info of visible) usersList.appendChild(createUserBadge(info));
+  const overflow = document.createElement("div");
+  overflow.className = "user-badge user-badge-overflow";
+  overflow.textContent = `+${hidden.length}`;
+  overflow.title = hidden.map((u) => u.name).join("\n");
+  usersList.appendChild(overflow);
+}
+
+function addUserBadge(id: string, name: string, color: string) {
+  users.set(id, { name, color });
+  renderUserBadges();
 }
 
 function removeUserBadge(id: string) {
-  const badge = userBadges.get(id);
-  if (badge) {
-    badge.remove();
-    userBadges.delete(id);
-  }
+  if (users.delete(id)) renderUserBadges();
 }
 
 // --- Mode toggle ---
@@ -1412,11 +1434,11 @@ function setupSocketListeners() {
       }
 
       // Reset existing user badges then re-render
-      for (const badge of userBadges.values()) badge.remove();
-      userBadges.clear();
+      users.clear();
       for (const [id, user] of Object.entries(data.users)) {
-        addUserBadge(id, user.name, user.color);
+        users.set(id, { name: user.name, color: user.color });
       }
+      renderUserBadges();
     },
   );
 
